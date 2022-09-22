@@ -1,6 +1,8 @@
 Comparing the OPAL opactiy profiles with the Kramers opacity law. 
-The file logT_values contains data from the OPAL website. It corresponds to 
-particular values of X, Y, Z (0.70, 0.29, and 0.01 respectively, hydrogen, helium and metal mass fraction). This is the closest table to solar composition.
+The file logT_values contains logT data from the OPAL website. 
+
+"test_opacity_new" file contains the opacity values for particular values of X, Y, Z (0.70, 0.29, and 0.01 respectively, 
+hydrogen, helium and metal mass fraction). This is the closest table to solar composition.
 
 #To do: Rather than taking the default values of X, Y, and Z, provided by the OPAL data repository, interpolation routines provided on the website can be
 used to create a more updated opacity profile. Doesn't seem very pertinent as of now.
