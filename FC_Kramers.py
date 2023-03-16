@@ -8,7 +8,7 @@ Usage:
 Options:
     --R=<R>                              Reynolds number [default: 1e2]
     --Ma2=<Ma2>                          Square of Mach number [default: 1]
-    --nu=<nu>                            Dynamic viscosity [default: 0.01]
+    --mu=<mu>                            Dynamic viscosity [default: 0.01]
     --n_h=<n_h>                          Enthalpy scale heights [default: 0.5]
     --gamma=<gamma>                      Gamma of ideal gas (cp/cv) [default: 5/3]
     --aspect=<aspect_ratio>              Physical aspect ratio of the atmosphere [default: 4]
@@ -69,11 +69,11 @@ else:
 
 # Bhishek
 # Define all the parameters. aa, bb, bc_jump are used for solving the NLBVP and getting the background stratification.
-# nu is prescribed (NEEDS TO BE CHECKED)
+# mu is prescribed (NEEDS TO BE CHECKED)
 R = float(args['--R'])
 R_inv = scrR = 1/R
 γ  = float(Fraction(args['--gamma']))
-nu = float(args['--nu'])
+mu = float(args['--mu'])
 aa = float(args['--aa'])
 bb = float(args['--bb'])
 bc_jump = float(args['--bc_jump'])
@@ -93,7 +93,7 @@ no_slip = args['--no_slip']
 data_dir = sys.argv[0].split('.py')[0]
 if no_slip:
     data_dir += '_NS'
-data_dir += "_nh{}_R{}_Ma2_{}_nu{}".format(args['--n_h'], args['--R'], args['--Ma2'], args['--nu'])
+data_dir += "_nh{}_R{}_Ma2_{}_mu{}".format(args['--n_h'], args['--R'], args['--Ma2'], args['--mu'])
 data_dir += "_a{}".format(args['--aspect'])
 data_dir += "_nz{:d}_nx{:d}".format(nz,nx)
 if args['--label']:
@@ -123,7 +123,7 @@ import dedalus.public as de
 from dedalus.extras import flow_tools
 rank = MPI.COMM_WORLD.rank
 
-logger.info("Ma2 = {:.3g}, R = {:.3g}, R_inv = {:.3g}, nu = {:.3g}, γ = {:.3g}".format(Ma2, R, R_inv, nu, γ))
+logger.info("Ma2 = {:.3g}, R = {:.3g}, R_inv = {:.3g}, mu = {:.3g}, γ = {:.3g}".format(Ma2, R, R_inv, mu, γ))
 
 logger.info(args)
 logger.info("saving data in: {}".format(data_dir))
@@ -159,6 +159,13 @@ zb = de.ChebyshevT(c.coords[1], size=nz, bounds=(0, Lz), dealias=dealias) # Defi
 b = (xb, zb) # This is the basis on which we will define all fields. 
 x = xb.local_grid(1) #Bhishek - Not sure what this does. Nothing on documentation.
 z = zb.local_grid(1)
+print('Checking zb')
+print('zb:')
+print(zb)
+print('min and max of zb:')
+print(np.min(zb),np.max(zb))
+print('shape of zb:')
+print(np.shape(zb))
 
 #Bhishek
 # Defining the fields on the bases b. log(h), log(rho), s, and u. 
@@ -184,7 +191,6 @@ lift = lambda A, n: de.Lift(A, zb2, n)
 div = lambda A: de.Divergence(A, index=0)
 lap = lambda A: de.Laplacian(A, c)
 grad = lambda A: de.Gradient(A, c)
-#curl = lambda A: de.operators.Curl(A)
 cross = lambda A, B: de.CrossProduct(A, B)
 trace = lambda A: de.Trace(A)
 trans = lambda A: de.TransposeComponents(A)
@@ -218,57 +224,29 @@ h0 = d.Field(name='h0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
 
+print('Printing shape of s before going to NLBVP solve')
+print(np.shape(s0['g']))
+
 if h0['g'].size > 0 :
    for i, z_i in enumerate(z[0,:]):
+        print(i,z_i)
+        print(z[0,:])
+        print('Shape of z:{}')
+        print(np.shape(z))
         h0['g'][:,i] = structure['h'](z=z_i).evaluate()['g'].real
         s0['g'][:,i] = structure['s'](z=z_i).evaluate()['g'].real
         θ0['g'][:,i] = structure['θ'](z=z_i).evaluate()['g'].real
         Υ0['g'][:,i] = structure['Υ'](z=z_i).evaluate()['g'].real
         κ0['g'][:,i] = structure['κ'](z=z_i).evaluate()['g'].real
 
-#####################################################################################################################
 
-##### The below block is to figure out how to make structure.py work in parallel#####################################
-#comm = MPI.COMM_WORLD
-#rank = comm.Get_rank()
+print('Priting s from the NLBVP solve:')
+print(np.shape(s0))
+print(np.shape(s0['g']))
+print('Printing s from the NLBVP solve:')
+print(s0['g'])
 
-#if rank == 0:
-#   structure = kramers_opacity_polytrope(nz, γ, n_h)
-#   print(structure)
-#   comm.bcast(structure, root=0)
-#else:
-#   structure = None
-#
-#print(comm,rank,structure)
-#####################################################################################################################
-
-#structure = kramers_opacity_polytrope(nz, γ, n_h, comm=MPI.COMM_SELF)
-#h0 = d.Field(name='h0', bases=zb)
-#θ0 = d.Field(name='θ0', bases=zb)
-#Υ0 = d.Field(name='Υ0', bases=zb)
-#s0 = d.Field(name='s0', bases=zb)
-#κ0 = d.Field(name='κ0', bases=zb)
-
-#h0['g'] = structure['h']['g']
-#θ0['g'] = structure['θ']['g']
-#Υ0['g'] = structure['Υ']['g']
-#s0['g'] = structure['s']['g']
-#κ0['g'] = structure['κ']['g']
-
-################### Printing the structure for debugging - Currently works only serial ###############################
-#if rank == 0:
-#   print("Printing h")
-#   print(h0['g'])
-#   print("Printing θ")
-#   print(θ0['g'])
-#   print("Printing Υ")
-#   print(Υ0['g'])
-#   print("Printing s")
-#   print(s0['g'])
-#   print("Printing κ")
-#   print(κ0['g'])   
-#####################################################################################################################
-
+# Calculting rho and other quantities. Mostly playing with this because of the log formulation.
 ρ0 = np.exp(Υ0).evaluate()
 ρ0.name = 'ρ0'
 ρ0_inv = np.exp(-Υ0).evaluate()
@@ -277,7 +255,15 @@ grad_h0 = grad(h0).evaluate()
 grad_θ0 = grad(θ0).evaluate()
 grad_Υ0 = grad(Υ0).evaluate()
 
+print("Here here, printing h0")
+print(h0)
+print(np.shape(h0))
+print(h0['g'])
 h0_g = de.Grid(h0).evaluate()
+print("Printing h0_g")
+print(h0_g)
+print(np.shape(h0_g))
+print(h0_g['g'])
 h0_inv_g = de.Grid(1/h0).evaluate()
 grad_h0_g = de.Grid(grad(h0)).evaluate()
 ρ0_g = de.Grid(ρ0).evaluate()
@@ -307,6 +293,8 @@ if verbose:
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(nrows=2)
 
+# Bhishek - What is this doing exactly?
+# Seems to be putting a threshold (defined by ncc_cutoff) on all the NCC expansions.
 logger.info("NCC expansions:")
 for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
@@ -324,8 +312,9 @@ if verbose:
     ax[1].legend()
     fig.savefig('structure.pdf')
 
+# Defining the Prandtl number here.
 #Pr = 0.01
-Pr = κ0/(nu*cP)
+Pr = mu*cP/κ0
 
 #print('Entropy')
 #print(s0['g'])
@@ -376,14 +365,22 @@ noise = d.Field(name='noise', bases=b)
 noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
 noise.low_pass_filter(scales=0.25)
 
+#Bhishek: Not needed - Check with Ben
 s['g'] = noise['g']*np.cos(np.pi/2*z/Lz)
 # pressure balanced ICs
 Υ['g'] = -scrS*γ/(γ-1)*s['g']
 θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g'] # this should evaluate to zero
 
+print('Priting shape of s initial conditions:')
+print(np.shape(s['g']))
+print(np.shape(s))
+print('Priting s from IC:')
+print(s['g'])
+
 if args['--SBDF2']:
     ts = de.SBDF2
-    cfl_safety_factor = 0.2
+    print(ts)
+    cfl_safety_factor = 0.4
 else:
     ts = de.RK443
     cfl_safety_factor = 0.4
@@ -414,26 +411,35 @@ IE.store_last = True
 Re.store_last = True
 ω.store_last = True
 
-slice_dt = 2.0
+slice_dt = 1.0
 trace_dt = 1.0
 
+# Adding file handlers for writing data
+# You can add an arbitrary number of file handlers to save different sets of tasks at different cadences and to different files. (Dedalus webpage)
+
+# Instead of sim_dt, it is possible to use wall_dt and iter too. 
 slice_output = solver.evaluator.add_file_handler(data_dir+'/slices',sim_dt=slice_dt,max_writes=20)
+slice_output.add_tasks(solver.state, name='background')
+
 slice_output.add_task(s+s0, name='s+s0')
 slice_output.add_task(s, name='s')
 slice_output.add_task(θ, name='θ')
 slice_output.add_task(ω, name='vorticity')
 slice_output.add_task(ω**2, name='enstrophy')
 slice_output.add_task(h, name='h')
-slice_output.add_task(h0, name='h0')
-slice_output.add_task(s0, name='s0')
-slice_output.add_task(Υ0, name='Υ0')
+#slice_output.add_task(h0, name='h0')
+#slice_output.add_task(s0, name='s0')
+#slice_output.add_task(Υ0, name='Υ0')
 
 # horizontal averages
-slice_output.add_task(x_avg(s), name='s(z)')
-slice_output.add_task(x_avg(-R_inv/Pr*grad(h-h0)@ez), name='F_κ(z)')
-slice_output.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
-slice_output.add_task(x_avg(u@ez*ρ*h), name='F_h(z)')
-slice_output.add_task(x_avg(-u@ez*ρ*h*s), name='F_PE(z)')
+
+#slice_output.add_task(x_avg(s), name='s(z)')
+#slice_output.add_task(x_avg(-R_inv/Pr*grad(h-h0)@ez), name='F_κ(z)')
+#slice_output.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
+#slice_output.add_task(x_avg(u@ez*ρ*h), name='F_h(z)')
+#slice_output.add_task(x_avg(-u@ez*ρ*h*s), name='F_PE(z)')
+
+# Old
 #slice_output.add_task(x_avg(-h*source*z), name='F_source') # only valid for constant source
 #slice_output.add_task(x_avg(-h*source), name='Q_source(z)')
 
