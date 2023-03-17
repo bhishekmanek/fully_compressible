@@ -24,9 +24,11 @@ Options:
     --nz=<nz>                            vertical z (chebyshev) resolution [default: 64]
     --nx=<nx>                            Horizontal x (Fourier) resolution; if not set, nx=aspect*nz
 
-    --run_time=<run_time>                Run time, in hours [default: 23.5]
+    --run_time=<run_time>                Run time, in houru
     --run_time_buoy=<run_time_buoy>      Run time, in buoyancy times
     --run_time_iter=<run_time_iter>      Run time, number of iterations; if not set, n_iter=np.inf
+
+    --restart=<restart>                  Merged chechpoint file to restart from.
 
     --ncc_cutoff=<ncc_cutoff>            Amplitude cutoff for NCCs [default: 1e-8]
 
@@ -66,6 +68,12 @@ if run_time_iter != None:
     run_time_iter = int(float(run_time_iter))
 else:
     run_time_iter = np.inf
+
+run_time = args['--run_time']
+if args['--run_time']:
+    run_time = float(args['--run_time'])
+else:
+    run_time = np.inf
 
 # Bhishek
 # Define all the parameters. aa, bb, bc_jump are used for solving the NLBVP and getting the background stratification.
@@ -159,13 +167,6 @@ zb = de.ChebyshevT(c.coords[1], size=nz, bounds=(0, Lz), dealias=dealias) # Defi
 b = (xb, zb) # This is the basis on which we will define all fields. 
 x = xb.local_grid(1) #Bhishek - Not sure what this does. Nothing on documentation.
 z = zb.local_grid(1)
-print('Checking zb')
-print('zb:')
-print(zb)
-print('min and max of zb:')
-print(np.min(zb),np.max(zb))
-print('shape of zb:')
-print(np.shape(zb))
 
 #Bhishek
 # Defining the fields on the bases b. log(h), log(rho), s, and u. 
@@ -224,27 +225,14 @@ h0 = d.Field(name='h0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
 
-print('Printing shape of s before going to NLBVP solve')
-print(np.shape(s0['g']))
-
 if h0['g'].size > 0 :
    for i, z_i in enumerate(z[0,:]):
-        print(i,z_i)
-        print(z[0,:])
-        print('Shape of z:{}')
-        print(np.shape(z))
         h0['g'][:,i] = structure['h'](z=z_i).evaluate()['g'].real
         s0['g'][:,i] = structure['s'](z=z_i).evaluate()['g'].real
         θ0['g'][:,i] = structure['θ'](z=z_i).evaluate()['g'].real
         Υ0['g'][:,i] = structure['Υ'](z=z_i).evaluate()['g'].real
         κ0['g'][:,i] = structure['κ'](z=z_i).evaluate()['g'].real
 
-
-print('Priting s from the NLBVP solve:')
-print(np.shape(s0))
-print(np.shape(s0['g']))
-print('Printing s from the NLBVP solve:')
-print(s0['g'])
 
 # Calculting rho and other quantities. Mostly playing with this because of the log formulation.
 ρ0 = np.exp(Υ0).evaluate()
@@ -255,15 +243,7 @@ grad_h0 = grad(h0).evaluate()
 grad_θ0 = grad(θ0).evaluate()
 grad_Υ0 = grad(Υ0).evaluate()
 
-print("Here here, printing h0")
-print(h0)
-print(np.shape(h0))
-print(h0['g'])
 h0_g = de.Grid(h0).evaluate()
-print("Printing h0_g")
-print(h0_g)
-print(np.shape(h0_g))
-print(h0_g['g'])
 h0_inv_g = de.Grid(1/h0).evaluate()
 grad_h0_g = de.Grid(grad(h0)).evaluate()
 ρ0_g = de.Grid(ρ0).evaluate()
@@ -371,15 +351,8 @@ s['g'] = noise['g']*np.cos(np.pi/2*z/Lz)
 Υ['g'] = -scrS*γ/(γ-1)*s['g']
 θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g'] # this should evaluate to zero
 
-print('Priting shape of s initial conditions:')
-print(np.shape(s['g']))
-print(np.shape(s))
-print('Priting s from IC:')
-print(s['g'])
-
 if args['--SBDF2']:
     ts = de.SBDF2
-    print(ts)
     cfl_safety_factor = 0.4
 else:
     ts = de.RK443
@@ -388,7 +361,15 @@ if args['--safety']:
     cfl_safety_factor = float(args['--safety'])
 
 solver = problem.build_solver(ts)
-solver.stop_iteration = run_time_iter
+#solver.stop_iteration = run_time_iter
+solver.stop_wall_time = run_time
+
+# Check whether to restart or append the simulation
+if not args['--restart']:
+    mode = 'overwrite'
+else:
+    write, dt = solver.load_state(args['--restart'])
+    mode = 'append'
 
 Δt = max_Δt = float(args['--max_dt'])
 cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold=0.1,
@@ -411,14 +392,18 @@ IE.store_last = True
 Re.store_last = True
 ω.store_last = True
 
-slice_dt = 1.0
+# Checkpoint same
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 6900, max_writes = 1, virtual_file=True, mode=mode)
+checkpoint.add_tasks(solver.state)
+
+slice_dt = 10.0
 trace_dt = 1.0
 
 # Adding file handlers for writing data
 # You can add an arbitrary number of file handlers to save different sets of tasks at different cadences and to different files. (Dedalus webpage)
 
 # Instead of sim_dt, it is possible to use wall_dt and iter too. 
-slice_output = solver.evaluator.add_file_handler(data_dir+'/slices',sim_dt=slice_dt,max_writes=20)
+slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=slice_dt, max_writes=20, mode=mode)
 slice_output.add_tasks(solver.state, name='background')
 
 slice_output.add_task(s+s0, name='s+s0')
@@ -444,7 +429,7 @@ slice_output.add_task(h, name='h')
 #slice_output.add_task(x_avg(-h*source), name='Q_source(z)')
 
 Ma_ad2 = Ma2*u@u*cP/(γ*h)
-traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=trace_dt, max_writes=50)
+traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=trace_dt, max_writes=np.inf, mode=mode)
 traces.add_task(avg(0.5*ρ*u@u), name='KE')
 traces.add_task(avg(PE), name='PE')
 traces.add_task(avg(IE), name='IE')
