@@ -50,19 +50,13 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
 
     n = (3-bb)/(aa+1)
     h_slope = -1/(1+n)
-    κ00=1.0
+#    κ00=10000000.0
+    κ00=1
     σ_sb=1
     κ_const = 16*σ_sb/(3*κ00)
 
     Lz = -1/h_slope*(1-np.exp(-n_h))
     
-    print("All input parameters")
-    print("nz:{}".format(nz) + "\nγ: {}".format(γ))
-    print("n_h:{}".format(n_h) + "\ncP: {}".format(cP) + "\nm_ad: {}".format(m_ad))
-    print("h_bot:{}".format(h_bot) + "\nh_slope: {}".format(h_slope) + "\ngrad_φ:".format(grad_φ))
-    print("κ0: {}".format(κ00) + "\nσ_sb: {}".format(σ_sb) + "\nκ_const: {}".format(κ_const))
-    print("Lz: {}".format(Lz))   
-
     c = de.CartesianCoordinates('z')
     d = de.Distributor(c, comm=comm, dtype=np.float64)
     zb = de.ChebyshevT(c.coords[-1], size=nz, bounds=(0, Lz), dealias=dealias)
