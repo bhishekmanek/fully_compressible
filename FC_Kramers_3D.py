@@ -25,7 +25,7 @@ Options:
     --nx=<nx>                            Horizontal x (Fourier) resolution; if not set, nx=aspect*nz
     --ny=<ny>                            Horizontal y; if not set, ny=aspect*nz 
 
-    --run_time=<run_time>                Run time, in houru
+    --run_time=<run_time>                Run time, in hours
     --run_time_buoy=<run_time_buoy>      Run time, in buoyancy times
     --run_time_iter=<run_time_iter>      Run time, number of iterations; if not set, n_iter=np.inf
 
@@ -119,7 +119,15 @@ s_c_over_c_P = scrS = 1 # s_c/c_P = 1
 
 no_slip = args['--no_slip']
 
-data_dir = 'data'
+data_dir = sys.argv[0].split('.py')[0]
+if no_slip:
+    data_dir += '_NS'
+data_dir += "_nh{}_R{}_mu{}".format(args['--n_h'], args['--R'], args['--mu'])
+data_dir += "_aa{}_bb{}_bc{}".format(args['--aa'], args['--bb'], args['--bc_jump'])
+data_dir += "_a{}".format(args['--aspect'])
+data_dir += "_nz{:d}_nx{:d}".format(nz,nx)
+if args['--label']:
+    data_dir += '_{:s}'.format(args['--label'])
 
 #Bhishek
 #Deal with the log file. NOT REALLY SURE WHAT THIS MEANS.
@@ -171,9 +179,11 @@ Lz = -1/h_slope*(1-np.exp(-n_h))
 Ly = float(args['--aspect'])*Lz
 Lx = float(args['--aspect'])*Lz
 
+vol = Lx*Ly*Lz
+
 #Bhishek
 #What does dealias do?
-dealias = 2
+dealias = 3/2
 c = de.CartesianCoordinates('x', 'y', 'z')
 d = de.Distributor(c, mesh=mesh, dtype=np.float64) #Distributor directs parallelization and distribution of fields defined in the coordinate system "c".
 xb = de.RealFourier(c.coords[0], size=nx, bounds=(0, Lx), dealias=dealias) # Define xb on the real Fourier sine/cosine basis
@@ -213,11 +223,13 @@ grad = lambda A: de.Gradient(A, c)
 cross = lambda A, B: de.CrossProduct(A, B)
 trace = lambda A: de.Trace(A)
 trans = lambda A: de.TransposeComponents(A)
+curl = lambda A: de.Curl(A)
 dt = lambda A: de.TimeDerivative(A)
 
-integ = lambda A: de.Integrate(de.Integrate(A, 'x'), 'z')
-avg = lambda A: integ(A)/(Lx*Lz)
+integ = lambda A: de.Integrate(de.Integrate(de.Integrate(A, 'x'), 'y'), 'z')
+avg = lambda A: integ(A)/(Lx*Ly*Lz)
 x_avg = lambda A: de.Integrate(A, 'x')/(Lx)
+xy_avg = lambda A: de.Integrate(de.Integrate(A, 'x'), 'y')/(Lx*Ly)
 
 from dedalus.core.operators import Skew
 skew = lambda A: Skew(A)
@@ -227,6 +239,7 @@ ex, ey, ez = c.unit_vector_fields(d)
 # stress-free bcs
 e = grad(u) + trans(grad(u))
 e.store_last = True
+ω = curl(u)
 
 viscous_terms = div(e) - 2/3*grad(div(u))
 trace_e = trace(e)
@@ -242,10 +255,6 @@ h0 = d.Field(name='h0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
-
-print(zb)
-print(np.shape(h0['g']))
-print(np.shape(structure['h'].evaluate()['g'].real))
 
 if h0['g'].size > 0 :
    for i, z_i in enumerate(z[0,0,:]):
@@ -282,7 +291,6 @@ grad_h0_g = de.Grid(grad(h0)).evaluate()
 θ_bot = θ0(z=0).evaluate()['g']
 θ_top = θ0(z=Lz).evaluate()['g']
 
-print("Here")
 
 if rank ==0:
     logger.info("Δθ = {:.2g} ({:.2g} to {:.2g})".format(θ_bot[0][0][0]-θ_top[0][0][0],θ_bot[0][0][0],θ_top[0][0][0]))
@@ -382,17 +390,23 @@ if args['--safety']:
     cfl_safety_factor = float(args['--safety'])
 
 solver = problem.build_solver(ts)
-#solver.stop_iteration = run_time_iter
+solver.stop_iteration = run_time_iter
 solver.stop_wall_time = run_time
 
+#print(solver.load_state(args['--restart']))
 # Check whether to restart or append the simulation
 if not args['--restart']:
     mode = 'overwrite'
+    Δt = max_Δt = float(args['--max_dt'])
 else:
-    write, dt = solver.load_state(args['--restart'])
+    write, dt = solver.load_state(args['--restart'], -1)
+    Δt = dt
+    max_Δt = float(args['--max_dt'])
     mode = 'append'
 
-Δt = max_Δt = float(args['--max_dt'])
+#Δt = max_Δt = float(args['--max_dt'])
+#max_Δt = float(args['--max_dt'])
+#Δt = dt
 cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold=0.1,
                      max_change=1.5, min_change=0.5, max_dt=max_Δt)
 cfl.add_velocity(u)
@@ -407,66 +421,78 @@ IE = 1/Ma2*ρ*h
 PE = -1/Ma2*ρ*h*(s+s0)
 Re = (ρ*R)*np.sqrt(u@u)
 N2 = -((grad_φ*ez)@grad(s+s0))/cP
-#ω = -div(skew(u))
-#N2E = (ω**2/N2)-1
 KE.store_last = True
 PE.store_last = True
 IE.store_last = True
 Re.store_last = True
-#ω.store_last = True
+ω.store_last = True
 
 # Checkpoint save - wall_dt is in seconds - wall_dt=6900 means that it dumps a checkpoint at 115 minutes - ideal for a 2hr run
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 6600, max_writes = 1, virtual_file=True, mode=mode)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 21000, max_writes = 1, virtual_file=True, mode=mode)
 checkpoint.add_tasks(solver.state)
 
-slice_dt = 0.5
-trace_dt = 1.0
+vol_dt = 5.0
+snap_dt = 2.0
+trace_dt = 2.0
+average_dt = 2.0
 
 # Adding file handlers for writing data
-# You can add an arbitrary number of file handlers to save different sets of tasks at different cadences and to different files. (Dedalus webpage)
-
 # Instead of sim_dt, it is possible to use wall_dt and iter too. 
-slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=slice_dt, max_writes=20, mode=mode)
-slice_output.add_tasks(solver.state, name='background')
 
-slice_output.add_task(s+s0, name='s+s0')
-slice_output.add_task(s, name='s')
-slice_output.add_task(θ, name='θ')
-#slice_output.add_task(ω, name='vorticity')
-#slice_output.add_task(ω**2, name='enstrophy')
-slice_output.add_task(h, name='h')
-slice_output.add_task(s0, name='s0')
-#slice_output.add_task(N2, name='N2')
-#slice_output.add_task(N2E, name='N2E')
-# horizontal averages
+# 3D Volume data
+vol_output = solver.evaluator.add_file_handler(data_dir+'/cube', sim_dt=vol_dt, max_writes=10, mode=mode)
+#vol_output.add_task(s+s0, name='s+s0')
+vol_output.add_task(s-xy_avg(s), name='s_rem')
+vol_output.add_task(u@ez, name='uz')
+#vol_output.add_task(θ, name='θ')
+vol_output.add_task(ω, name='vorticity')
+vol_output.add_task(ω@ω, name='enstrophy')
+#vol_output.add_task(h, name='h')
+#vol_output.add_task(s0, name='s0')
 
-# N2 = t*del(s)
+# 2D Slice data
+snap = solver.evaluator.add_file_handler(data_dir+'/snapshots', sim_dt=snap_dt, max_writes=10, mode=mode)
+snap.add_task((s-xy_avg(s))(x=0), name='srem yz side')
+snap.add_task((s-xy_avg(s))(y=0), name='srem xz side')
+snap.add_task((s-xy_avg(s))(z=Lz/2), name='srem xy midplane')
+snap.add_task((s-xy_avg(s))(y=Ly/2), name='srem xz midplane')
+snap.add_task((s-xy_avg(s))(x=Lx/2), name='srem yz midplane')
+snap.add_task((s-xy_avg(s))(z=Lz*3/4), name='srem 0.75 z')
+snap.add_task((s-xy_avg(s))(z=0.99*Lz), name='srem top')
+snap.add_task((ω@ω)(x=0), name='enstrophy yz side')
+snap.add_task((ω@ω)(y=0), name='enstrophy xz side')
+snap.add_task((ω@ω)(z=Lz/2), name='enstrophy xy midplane')
+snap.add_task((ω@ω)(y=Ly/2), name='enstrophy xz midplane')
+snap.add_task((ω@ω)(x=Lx/2), name='enstrophy yz midpalne')
+snap.add_task((ω@ω)(z=Lz*3/4), name='enstrophy 0.75 z')
+snap.add_task((ω@ω)(z=0.99*Lz), name='enstrophy top')
 
-slice_output.add_task(x_avg(s+s0), name='stot(z)')
-slice_output.add_task(x_avg(s), name='s(z)')
-slice_output.add_task(x_avg(h), name='h(z)')
-slice_output.add_task(x_avg(h+h0), name='htot(z)')
-slice_output.add_task(x_avg(-R_inv/Pr*grad(h-h0)@ez), name='F_κ(z)')
-slice_output.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
-slice_output.add_task(x_avg(u@ez*ρ*h), name='F_h(z)')
-slice_output.add_task(x_avg(-u@ez*ρ*h*s), name='F_PE(z)')
-slice_output.add_task(x_avg(N2), name='N2(z)')
-#slice_output.add_task(x_avg(ω**2), name='enstrophy(z)')
-#slice_output.add_task(x_avg(N2E), name='N2E(z)')
+# 1D average data
+averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=average_dt, max_writes=10, mode=mode)
+averages.add_task(xy_avg(s+s0), name='stot(z)')
+averages.add_task(xy_avg(s), name='s(z)')
+averages.add_task(xy_avg(h), name='h(z)')
+averages.add_task(xy_avg(h+h0), name='htot(z)')
+averages.add_task(xy_avg(-R_inv/Pr*grad(h-h0)@ez), name='F_κ(z)')
+averages.add_task(xy_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
+averages.add_task(xy_avg(u@ez*ρ*h), name='F_h(z)')
+averages.add_task(xy_avg(-u@ez*ρ*h*s), name='F_PE(z)')
+averages.add_task(xy_avg(ω@ω), name='enstrophy(z)')
 
+# Scalars - as a function of time
 Ma_ad2 = Ma2*u@u*cP/(γ*h)
-traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=trace_dt, max_writes=np.inf, mode=mode)
+traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=trace_dt, max_writes=10, mode=mode)
 traces.add_task(avg(0.5*ρ*u@u), name='KE')
 traces.add_task(avg(PE), name='PE')
 traces.add_task(avg(IE), name='IE')
 traces.add_task(avg(Re), name='Re')
-#traces.add_task(avg(ω**2), name='avg_enstrophy')
-#traces.add_task(avg(N2), name='brunt')
+traces.add_task(avg(N2), name='BV_freq')
+traces.add_task(avg(ω@ω), name='avg_enstrophy')
 traces.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-traces.add_task(x_avg(np.sqrt(τ_u1@τ_u1)), name='τ_u1')
-traces.add_task(x_avg(np.sqrt(τ_u2@τ_u2)), name='τ_u2')
-traces.add_task(x_avg(np.sqrt(τ_s1**2)), name='τ_s1')
-traces.add_task(x_avg(np.sqrt(τ_s2**2)), name='τ_s2')
+traces.add_task(xy_avg(np.sqrt(τ_u1@τ_u1)), name='τ_u1')
+traces.add_task(xy_avg(np.sqrt(τ_u2@τ_u2)), name='τ_u2')
+traces.add_task(xy_avg(np.sqrt(τ_s1**2)), name='τ_s1')
+traces.add_task(xy_avg(np.sqrt(τ_s2**2)), name='τ_s2')
 
 report_cadence = 5
 good_solution = True
@@ -476,20 +502,20 @@ flow.add_property(Re, name='Re')
 flow.add_property(KE, name='KE')
 flow.add_property(IE, name='IE')
 flow.add_property(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-flow.add_property(τ_u1, name='τ_u1')
-flow.add_property(τ_u2, name='τ_u2')
-flow.add_property(τ_s1, name='τ_s1')
-flow.add_property(τ_s2, name='τ_s2')
+flow.add_property(np.sqrt(τ_u1@τ_u1), name='τ_u1')
+flow.add_property(np.sqrt(τ_u2@τ_u2), name='τ_u2')
+flow.add_property(np.abs(τ_s1), name='τ_s1')
+flow.add_property(np.abs(τ_s2), name='τ_s2')
 
 KE_avg = 0
 while solver.proceed and good_solution:
     # advance
     solver.step(Δt)
     if solver.iteration % report_cadence == 0:
-        KE_avg = flow.grid_average('KE')
-        IE_avg = flow.grid_average('IE')
+        KE_avg = flow.volume_integral('KE')/vol
+        IE_avg = flow.volume_integral('IE')/vol
         Ma_ad_avg = flow.grid_average('Ma_ad')
-        Re_avg = flow.grid_average('Re')
+        Re_avg = flow.volume_integral('Re')/vol
         Re_max = flow.max('Re')
         τu1_max = flow.max('τ_u1')
         τu2_max = flow.max('τ_u2')
