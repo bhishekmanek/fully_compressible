@@ -54,15 +54,7 @@ ncc_cutoff = float(args['--ncc_cutoff'])
 
 #Resolution
 nz = int(args['--nz'])
-#if nx is not None:
-#    nx = int(nx)
-#else:
-#    nx = int(nz*float(args['--aspect']))
 nx = int(nz*float(args['--aspect']))
-#if ny is not None:
-#    ny = int(ny)
-#else:
-#    ny = int(nz*float(args['--aspect']))
 ny = int(nz*float(args['--aspect']))
 # Get the buoyancy run time and the no. of iterations to run for
 run_time_buoy = args['--run_time_buoy']
@@ -129,10 +121,6 @@ data_dir += "_nz{:d}_nx{:d}".format(nz,nx)
 if args['--label']:
     data_dir += '_{:s}'.format(args['--label'])
 
-#Bhishek
-#Deal with the log file. NOT REALLY SURE WHAT THIS MEANS.
-#import logging
-#logger = logging.getLogger(__name__)
 dlog = logging.getLogger('evaluator')
 dlog.setLevel(logging.WARNING)
 
@@ -158,14 +146,6 @@ logger.info("Ma2 = {:.3g}, R = {:.3g}, R_inv = {:.3g}, mu = {:.3g}, γ = {:.3g}"
 logger.info(args)
 logger.info("saving data in: {}".format(data_dir))
 
-#Bhishek
-# Check if you need h_bot over here. NOT REALLY
-# this assumes h_bot=1, grad_φ = (γ-1)/γ (or L=Hρ)
-
-#h_bot = 1 #New change
-
-# generally, h_slope = -1/(1+m)
-# start in an adibatic state, heat from there
 
 #Bhishek
 #HERE H_SLOPE NEEDS TO CHANGE. IT SHOULD BE -1/(1+N) WHERE N IS THE POLYTROPIC INDEX DEFINED BY AA AND BB FREE PARAMETERS.
@@ -181,8 +161,6 @@ Lx = float(args['--aspect'])*Lz
 
 vol = Lx*Ly*Lz
 
-#Bhishek
-#What does dealias do?
 dealias = 3/2
 c = de.CartesianCoordinates('x', 'y', 'z')
 d = de.Distributor(c, mesh=mesh, dtype=np.float64) #Distributor directs parallelization and distribution of fields defined in the coordinate system "c".
@@ -262,7 +240,6 @@ s0 = d.Field(name='s0', bases=zb)
 #Υ = d.Field(name='Υ_poly', bases=zb)
 #s = d.Field(name='s_poly', bases=zb)
 
-print("Hello!")
 if h0['g'].size > 0 :
    for i, z_i in enumerate(z[0,0,:]):
         h0['g'][:,:,i] = structure['h_poly'](z=z_i).evaluate()['g'].real
@@ -275,7 +252,6 @@ if h0['g'].size > 0 :
         θ['g'][:,:,i] = structure['θ'](z=z_i).evaluate()['g'].real - structure['θ_poly'](z=z_i).evaluate()['g'].real
         Υ['g'][:,:,i] = structure['Υ'](z=z_i).evaluate()['g'].real - structure['Υ_poly'](z=z_i).evaluate()['g'].real
 
-print("Bye!")
 # Calculting rho and other quantities. Mostly playing with this because of the log formulation.
 ρ0 = np.exp(Υ0).evaluate()
 ρ0.name = 'ρ0'
@@ -372,7 +348,7 @@ else:
 #problem.add_equation((θ(z=0), 0)) #Ideally it should be np.log(h_bot)
 #problem.add_equation((θ(z=Lz), np.log(np.exp(-n_h)+bc_jump)))
 problem.add_equation((s(z=0), 0))
-problem.add_equation((s(z=Lz), -0.070102261))
+problem.add_equation((s(z=Lz), -0.070102261)) # Don't need to hardcode this! It should be s0(Lz)-s_poly(Lz)
 #Old BC's
 #problem.add_equation((ez@grad(θ)(z=0), 0))
 #problem.add_equation((θ(z=Lz), 0))
@@ -387,6 +363,7 @@ noise = d.Field(name='noise', bases=b)
 noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
 noise.low_pass_filter(scales=0.25)
 
+# Initial Conditions
 #s['g'] = noise['g']*np.cos(np.pi/2*z/Lz)
 # pressure balanced ICs
 #Υ['g'] = -scrS*γ/(γ-1)*s['g']
