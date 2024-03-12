@@ -25,6 +25,7 @@ Options:
 
 import numpy as np
 import logging
+import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 dlog = logging.getLogger('evaluator')
 dlog.setLevel(logging.WARNING)
@@ -49,6 +50,8 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     σ_sb = 1
 
     n = (3-bb)/(aa+1)
+    print("Polytrope index", n)
+
     h_slope = -1/(1+n)
 #    κ00=10000000.0
     κ00=1
@@ -94,8 +97,13 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     Υ0 = d.Field(name='Υ0', bases=zb)
     s0 = d.Field(name='s0', bases=zb)
     κ0 = d.Field(name='κ0', bases=zb)
+    h_poly = d.Field(name='h_poly', bases=zb)
+    θ_poly = d.Field(name='θ_poly', bases=zb)
+    rho_poly = d.Field(name='rho_poly', bases=zb)
+    Υ_poly = d.Field(name='Υ_poly', bases=zb)
+    s_poly = d.Field(name='s_poly', bases=zb)
 
-    structure = {'h':h0, 's':s0, 'θ':θ0, 'Υ':Υ0, 'κ':κ0}
+    structure = {'h':h0, 's':s0, 'θ':θ0, 'Υ':Υ0, 'κ':κ0, 'h_poly':h_poly, 'θ_poly':θ_poly, 'rho_poly':rho_poly, 'Υ_poly':Υ_poly, 's_poly':s_poly}
     for key in structure:
         structure[key].change_scales(dealias)
     h0['g'] = h_bot + 1.0*zd*h_slope #enthalpy
@@ -103,6 +111,11 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     Υ0['g'] = (n*θ0).evaluate()['g'] # log rho
     s0['g'] = 0.0#((-1/m_ad)*Υ0+θ0).evaluate()['g'] # entropy - we are starting with a entropy profile that is 0
     κ0['g'] = (κ_const*h0**(3-bb)/(np.exp(Υ0))**(1+aa)).evaluate()['g']
+    h_poly['g'] = (1.0-zd/(1.0+n))
+    θ_poly['g'] = np.log(h_poly['g'])
+    rho_poly['g'] = (h_poly['g'])**n
+    Υ_poly['g'] = np.log(rho_poly['g'])
+    s_poly['g'] = (m_ad/cP)*θ_poly['g'] - (1.0/cP)*Υ_poly['g']
 
     problem = de.NLBVP([h0, s0, Υ0, τ_s1, τ_s2, τ_h1])
     problem.add_equation((grad(h0) + lift(τ_h1,-1),
@@ -136,11 +149,43 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
 
     κ0['g'] = (κ_const*h0**(3-bb)/(np.exp(Υ0))**(1+aa)).evaluate()['g']
 
+
+
+    print(np.shape(h_poly['g']), np.shape(κ0['g']))
+
     #print(h0['g']-enth)
     #print(dens-np.exp(Υ0['g']))
 
     if verbose:
         import matplotlib.pyplot as plt
+
+        fig1, axs1 = plt.subplots(1,5, figsize=(13,4))
+        plt.subplot(1,5,1)
+        plt.plot(zd,h_poly['g'], color='xkcd:dark grey', label='h')
+        plt.subplot(1,5,2)
+        plt.plot(zd,θ_poly['g'], label='theta')
+        plt.subplot(1,5,3)
+        plt.plot(zd,rho_poly['g'], label='rho')
+        plt.subplot(1,5,4)
+        plt.plot(zd,Υ_poly['g'], label='Y')
+        plt.subplot(1,5,5)
+        plt.plot(zd,s_poly['g'], label='s')
+        plt.legend()
+        plt.savefig('poly.pdf',bbox_inches='tight')
+
+        fig2, axs2 = plt.subplots(1,5, figsize=(13,4))
+        plt.subplot(1,5,1)
+        plt.plot(zd,h0['g']-h_poly['g'], color='xkcd:dark grey', label='h')
+        plt.subplot(1,5,2)
+        plt.plot(zd,np.log(h0['g'])-θ_poly['g'], label='theta')
+        plt.subplot(1,5,3)
+        plt.plot(zd,np.exp(Υ0['g'])-rho_poly['g'], label='rho')
+        plt.subplot(1,5,4)
+        plt.plot(zd,Υ0['g']-Υ_poly['g'], label='Y')
+        plt.subplot(1,5,5)
+        plt.plot(zd,s0['g']-s_poly['g'], label='s')
+        plt.legend()
+        plt.savefig('pert.pdf',bbox_inches='tight')
 
         fig, axs = plt.subplots(1, 5, figsize=(13, 4))
         fig.subplots_adjust(hspace=0.9, wspace=0.4)
