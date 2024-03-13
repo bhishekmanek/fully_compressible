@@ -178,7 +178,7 @@ z = zb.local_grid(1)
 # Defining the fields on the bases b. log(h), log(rho), s, and u. 
 # Fields
 
-h = d.Field(name='h', bases=b)
+#h = d.Field(name='h', bases=b)
 θ = d.Field(name='θ', bases=b)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
@@ -247,7 +247,7 @@ if h0['g'].size > 0 :
         θ0['g'][:,:,i] = structure['θ_poly'](z=z_i).evaluate()['g'].real
         Υ0['g'][:,:,i] = structure['Υ_poly'](z=z_i).evaluate()['g'].real
         κ0['g'][:,:,i] = structure['κ'](z=z_i).evaluate()['g'].real
-        h['g'][:,:,i] = structure['h'](z=z_i).evaluate()['g'].real - structure['h_poly'](z=z_i).evaluate()['g'].real
+        #h['g'][:,:,i] = structure['h'](z=z_i).evaluate()['g'].real - structure['h_poly'](z=z_i).evaluate()['g'].real
         s['g'][:,:,i] = structure['s'](z=z_i).evaluate()['g'].real - structure['s_poly'](z=z_i).evaluate()['g'].real
         θ['g'][:,:,i] = structure['θ'](z=z_i).evaluate()['g'].real - structure['θ_poly'](z=z_i).evaluate()['g'].real
         Υ['g'][:,:,i] = structure['Υ'](z=z_i).evaluate()['g'].real - structure['Υ_poly'](z=z_i).evaluate()['g'].real

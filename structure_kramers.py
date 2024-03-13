@@ -50,7 +50,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     σ_sb = 1
 
     n = (3-bb)/(aa+1)
-    print("Polytrope index", n)
+    #print("Polytrope index", n)
 
     h_slope = -1/(1+n)
 #    κ00=10000000.0
@@ -151,7 +151,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
 
 
 
-    print(np.shape(h_poly['g']), np.shape(κ0['g']))
+    #print(np.shape(h_poly['g']), np.shape(κ0['g']))
 
     #print(h0['g']-enth)
     #print(dens-np.exp(Υ0['g']))
