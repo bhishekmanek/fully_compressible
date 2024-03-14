@@ -178,7 +178,7 @@ z = zb.local_grid(1)
 # Defining the fields on the bases b. log(h), log(rho), s, and u. 
 # Fields
 
-#h = d.Field(name='h', bases=b)
+h = d.Field(name='h', bases=b)
 θ = d.Field(name='θ', bases=b)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
@@ -235,22 +235,38 @@ h0 = d.Field(name='h0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
-#h = d.Field(name='h_poly', bases=zb)
-#θ = d.Field(name='θ_poly', bases=zb)
-#Υ = d.Field(name='Υ_poly', bases=zb)
-#s = d.Field(name='s_poly', bases=zb)
+s_tot = d.Field(name='s_tot', bases=b)
+θ_tot = d.Field(name='θ_tot', bases=b)
+Υ_tot = d.Field(name='Υ_tot', bases=b)
 
-if h0['g'].size > 0 :
-   for i, z_i in enumerate(z[0,0,:]):
-        h0['g'][:,:,i] = structure['h_poly'](z=z_i).evaluate()['g'].real
-        s0['g'][:,:,i] = structure['s_poly'](z=z_i).evaluate()['g'].real
-        θ0['g'][:,:,i] = structure['θ_poly'](z=z_i).evaluate()['g'].real
-        Υ0['g'][:,:,i] = structure['Υ_poly'](z=z_i).evaluate()['g'].real
-        κ0['g'][:,:,i] = structure['κ'](z=z_i).evaluate()['g'].real
-        #h['g'][:,:,i] = structure['h'](z=z_i).evaluate()['g'].real - structure['h_poly'](z=z_i).evaluate()['g'].real
-        s['g'][:,:,i] = structure['s'](z=z_i).evaluate()['g'].real - structure['s_poly'](z=z_i).evaluate()['g'].real
-        θ['g'][:,:,i] = structure['θ'](z=z_i).evaluate()['g'].real - structure['θ_poly'](z=z_i).evaluate()['g'].real
-        Υ['g'][:,:,i] = structure['Υ'](z=z_i).evaluate()['g'].real - structure['Υ_poly'](z=z_i).evaluate()['g'].real
+if h0['c'].size > 0:
+   h0['c'][0,0,:] = structure['h_poly']['c']
+   s0['c'][0,0,:] = structure['s_poly']['c']
+   θ0['c'][0,0,:] = structure['θ_poly']['c']
+   Υ0['c'][0,0,:] = structure['Υ_poly']['c']
+   κ0['c'][0,0,:] = structure['κ']['c']
+   s['c'][0,0,:] = structure['s']['c']
+   θ['c'][0,0,:] = structure['θ']['c']
+   Υ['c'][0,0,:] = structure['Υ']['c']
+#   s_tot['c'][0,0,:] = structure['s']['c']
+#   θ_tot['c'][0,0,:] = structure['θ']['c']
+#   Υ_tot['c'][0,0,:] = structure['Υ']['c']
+
+for q in (s0,θ0,Υ0,s,θ,Υ):
+    q.require_grid_space()
+
+#for q in (s0,θ0,Υ0,s_tot,θ_tot,Υ_tot):
+#    q.require_grid_space()
+
+if (s0['g'].size > 0):
+    s['g'] -= s0['g']
+    θ['g'] -= θ0['g']
+    Υ['g'] -= Υ0['g']
+
+#if (s0['g'].size > 0):
+#    s['g'] = s_tot['g'] - s0['g']
+#    θ['g'] = θ_tot['g'] - θ0['g']
+#    Υ['g'] = Υ_tot['g'] - Υ0['g']
 
 # Calculting rho and other quantities. Mostly playing with this because of the log formulation.
 ρ0 = np.exp(Υ0).evaluate()
@@ -292,7 +308,7 @@ if verbose:
 # Bhishek - What is this doing exactly?
 # Seems to be putting a threshold (defined by ncc_cutoff) on all the NCC expansions.
 logger.info("NCC expansions:")
-for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0)]:
+for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*h0, ρ0*grad(θ0), ρ0*h0*grad(s0), ρ0*grad(ln_κ0), h0*grad(Υ0), h0*grad(s0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
     if verbose:
         ncc = ncc.evaluate()
@@ -355,20 +371,6 @@ problem.add_equation((s(z=Lz), -0.070102261)) # Don't need to hardcode this! It 
 #problem.add_equation((θ(z=0), 0))
 logger.info("Problem built")
 
-# initial conditions
-amp = 1e-4
-
-zb, zt = zb.bounds
-noise = d.Field(name='noise', bases=b)
-noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
-noise.low_pass_filter(scales=0.25)
-
-# Initial Conditions
-#s['g'] = noise['g']*np.cos(np.pi/2*z/Lz)
-# pressure balanced ICs
-#Υ['g'] = -scrS*γ/(γ-1)*s['g']
-#θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g'] # this should evaluate to zero
-
 if args['--SBDF2']:
     ts = de.SBDF2
     cfl_safety_factor = 0.2
@@ -382,7 +384,6 @@ solver = problem.build_solver(ts)
 solver.stop_iteration = run_time_iter
 solver.stop_wall_time = run_time
 
-#print(solver.load_state(args['--restart']))
 # Check whether to restart or append the simulation
 if not args['--restart']:
     mode = 'overwrite'
@@ -393,15 +394,9 @@ else:
     max_Δt = float(args['--max_dt'])
     mode = 'append'
 
-#Δt = max_Δt = float(args['--max_dt'])
-#max_Δt = float(args['--max_dt'])
-#Δt = dt
 cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold=0.1,
                      max_change=1.5, min_change=0.5, max_dt=max_Δt)
 cfl.add_velocity(u)
-
-#s0 = d.Field(name='s0')
-#s0['g'] = 0
 
 ρ = ρ0*np.exp(Υ).evaluate()
 h = h0*np.exp(θ).evaluate()
@@ -416,7 +411,7 @@ IE.store_last = True
 Re.store_last = True
 ω.store_last = True
 
-# Checkpoint save - wall_dt is in seconds - wall_dt=6900 means that it dumps a checkpoint at 115 minutes - ideal for a 2hr run
+# Checkpoint save - wall_dt is in seconds
 checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 21000, max_writes = 1, virtual_file=True, mode=mode)
 checkpoint.add_tasks(solver.state)
 
@@ -460,6 +455,13 @@ snap.add_task((ω@ω)(z=0.99*Lz), name='enstrophy top')
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=1, max_writes=1, mode=mode)
 averages.add_task(xy_avg(s+s0), name='stot(z)')
 averages.add_task(xy_avg(s), name='s(z)')
+averages.add_task(xy_avg(s-s0), name='sm(z)')
+averages.add_task(xy_avg(θ), name='θ(z)')
+averages.add_task(xy_avg(Υ), name='Υ(z)')
+averages.add_task(xy_avg(Υ+Υ0), name='Υtot(z)')
+averages.add_task(xy_avg(θ+θ0), name='θtot(z)')
+averages.add_task(xy_avg(θ-θ0), name='θm(z)')
+averages.add_task(xy_avg(Υ-Υ0), name='Υm(z)')
 averages.add_task(xy_avg(h), name='h(z)')
 averages.add_task(xy_avg(h+h0), name='htot(z)')
 averages.add_task(xy_avg(-R_inv/Pr*grad(h-h0)@ez), name='F_κ(z)')
@@ -467,9 +469,6 @@ averages.add_task(xy_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
 averages.add_task(xy_avg(u@ez*ρ*h), name='F_h(z)')
 averages.add_task(xy_avg(-u@ez*ρ*h*s), name='F_PE(z)')
 averages.add_task(xy_avg(ω@ω), name='enstrophy(z)')
-averages.add_task(xy_avg(h0), name='h0(z)')
-averages.add_task(xy_avg(s0), name='s0(z)')
-
 
 # Scalars - as a function of time
 Ma_ad2 = Ma2*u@u*cP/(γ*h)
