@@ -48,14 +48,13 @@ from docopt import docopt
 args = docopt(__doc__)
 from fractions import Fraction
 
-#Bhishek: What is this used for?
-# This is an amplitude cutoff for the non-constant coefficients. This has a large performance impact when the polynomials are not low-degrees.
 ncc_cutoff = float(args['--ncc_cutoff'])
 
 #Resolution
 nz = int(args['--nz'])
 nx = int(nz*float(args['--aspect']))
 ny = int(nz*float(args['--aspect']))
+
 # Get the buoyancy run time and the no. of iterations to run for
 run_time_buoy = args['--run_time_buoy']
 if run_time_buoy != None:
@@ -92,7 +91,7 @@ else:
 logger.info("running on processor mesh={}".format(mesh))
 
 # Define all the parameters. aa, bb, bc_jump are used for solving the NLBVP and getting the background stratification.
-# mu is prescribed (NEEDS TO BE CHECKED)
+# mu is prescribed
 R = float(args['--R'])
 R_inv = scrR = 1/R
 γ  = float(Fraction(args['--gamma']))
@@ -111,6 +110,7 @@ s_c_over_c_P = scrS = 1 # s_c/c_P = 1
 
 no_slip = args['--no_slip']
 
+# Create data directory with appropriate naming convention
 data_dir = sys.argv[0].split('.py')[0]
 if no_slip:
     data_dir += '_NS'
@@ -146,13 +146,10 @@ logger.info("Ma2 = {:.3g}, R = {:.3g}, R_inv = {:.3g}, mu = {:.3g}, γ = {:.3g}"
 logger.info(args)
 logger.info("saving data in: {}".format(data_dir))
 
-
-#Bhishek
 #HERE H_SLOPE NEEDS TO CHANGE. IT SHOULD BE -1/(1+N) WHERE N IS THE POLYTROPIC INDEX DEFINED BY AA AND BB FREE PARAMETERS.
 h_slope = -1/(1+n_poly) # Changing m_ad here to n
 grad_φ = (γ-1)/γ
 
-#Bhishek
 #CHECK THE DERIVATION FOR THIS. HOW IS LZ DEFINED IN TERMS OF ENTHALPY SCALE HEIGHT
 n_h = float(args['--n_h'])
 Lz = -1/h_slope*(1-np.exp(-n_h))
@@ -170,22 +167,18 @@ zb = de.ChebyshevT(c.coords[2], size=nz, bounds=(0, Lz), dealias=dealias) # Defi
 
 b = (xb, yb, zb) # This is the basis on which we will define all fields. 
 ba_p = (xb, yb)
-x = xb.local_grid(1) #Bhishek - Not sure what this does. Nothing on documentation.
+x = xb.local_grid(1)
 y = yb.local_grid(1)
 z = zb.local_grid(1)
 
-#Bhishek
 # Defining the fields on the bases b. log(h), log(rho), s, and u. 
 # Fields
 
-h = d.Field(name='h', bases=b)
 θ = d.Field(name='θ', bases=b)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
 u = d.VectorField(c, name='u', bases=b)
 
-# Bhishek
-# What is Lambda?
 # Taus
 zb1 = zb.clone_with(a=zb.a+1, b=zb.b+1)
 zb2 = zb.clone_with(a=zb.a+2, b=zb.b+2)
@@ -226,7 +219,7 @@ trace_e = trace(e)
 trace_e.store_last = True
 Phi = 0.5*trace(e@e) - 1/3*(trace_e*trace_e)
 
-############### Trying to bring structure in a parallel run #########################################################
+# Get the structure from an NLBVP solve "structure_kramers"
 from structure_kramers import kramers_opacity_polytrope
 structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=True, comm=MPI.COMM_SELF)
 
@@ -235,12 +228,11 @@ h0 = d.Field(name='h0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
-s_tot = d.Field(name='s_tot', bases=b)
-θ_tot = d.Field(name='θ_tot', bases=b)
-Υ_tot = d.Field(name='Υ_tot', bases=b)
+#s_tot = d.Field(name='s_tot', bases=b)
+#θ_tot = d.Field(name='θ_tot', bases=b)
+#Υ_tot = d.Field(name='Υ_tot', bases=b)
 
 if h0['c'].size > 0:
-   h0['c'][0,0,:] = structure['h_poly']['c']
    s0['c'][0,0,:] = structure['s_poly']['c']
    θ0['c'][0,0,:] = structure['θ_poly']['c']
    Υ0['c'][0,0,:] = structure['Υ_poly']['c']
@@ -268,11 +260,13 @@ if (s0['g'].size > 0):
 #    θ['g'] = θ_tot['g'] - θ0['g']
 #    Υ['g'] = Υ_tot['g'] - Υ0['g']
 
-# Calculting rho and other quantities. Mostly playing with this because of the log formulation.
+# Calculting rho and other quantities
 ρ0 = np.exp(Υ0).evaluate()
 ρ0.name = 'ρ0'
 ρ0_inv = np.exp(-Υ0).evaluate()
 ρ0_inv.name = '1/ρ0'
+h0 = np.exp(θ0).evaluate()
+h0.name = 'h0'
 grad_h0 = grad(h0).evaluate()
 grad_θ0 = grad(θ0).evaluate()
 grad_Υ0 = grad(Υ0).evaluate()
@@ -295,18 +289,16 @@ grad_h0_g = de.Grid(grad(h0)).evaluate()
 θ_bot = θ0(z=0).evaluate()['g']
 θ_top = θ0(z=Lz).evaluate()['g']
 
-
 if rank ==0:
     logger.info("Δθ = {:.2g} ({:.2g} to {:.2g})".format(θ_bot[0][0][0]-θ_top[0][0][0],θ_bot[0][0][0],θ_top[0][0][0]))
     logger.info("ΔΥ = {:.2g} ({:.2g} to {:.2g})".format(Υ_bot[0][0][0]-Υ_top[0][0][0],Υ_bot[0][0][0],Υ_top[0][0][0]))
 
+# Calculate the NCCs in the equations
 verbose = False
 if verbose:
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(nrows=2)
 
-# Bhishek - What is this doing exactly?
-# Seems to be putting a threshold (defined by ncc_cutoff) on all the NCC expansions.
 logger.info("NCC expansions:")
 for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*h0, ρ0*grad(θ0), ρ0*h0*grad(s0), ρ0*grad(ln_κ0), h0*grad(Υ0), h0*grad(s0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
@@ -422,7 +414,7 @@ average_dt = 2.0
 
 # Adding file handlers for writing data
 # Instead of sim_dt, it is possible to use wall_dt and iter too. 
-
+#
 # 3D Volume data
 vol_output = solver.evaluator.add_file_handler(data_dir+'/cube', sim_dt=vol_dt, max_writes=10, mode=mode)
 #vol_output.add_task(s+s0, name='s+s0')
