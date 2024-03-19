@@ -178,6 +178,7 @@ z = zb.local_grid(1)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
 κ = d.Field(name='κ', bases=b)
+λ = d.Field(name='λ', bases=b)
 u = d.VectorField(c, name='u', bases=b)
 
 # Taus
@@ -229,18 +230,21 @@ h0 = d.Field(name='h0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
+λ0 = d.Field(name='λ0', bases=zb)
 
 if s0['c'].size > 0:
    s0['c'][0,0,:] = structure['s_poly']['c']
    θ0['c'][0,0,:] = structure['θ_poly']['c']
    Υ0['c'][0,0,:] = structure['Υ_poly']['c']
    κ0['c'][0,0,:] = structure['κ_poly']['c']
+   λ0['c'][0,0,:] = structure['λ_poly']['c']
    s['c'][0,0,:] = structure['s']['c']
    θ['c'][0,0,:] = structure['θ']['c']
    Υ['c'][0,0,:] = structure['Υ']['c']
    κ['c'][0,0,:] = structure['κ']['c']
+   λ['c'][0,0,:] = structure['λ']['c']
 
-for q in (s0,θ0,Υ0,κ0,s,θ,Υ,κ):
+for q in (s0,θ0,Υ0,κ0,λ0,s,θ,Υ,κ,λ):
     q.require_grid_space()
 
 if (s0['g'].size > 0):
@@ -248,6 +252,7 @@ if (s0['g'].size > 0):
     s['g'] -= s0['g']
     θ['g'] -= θ0['g']
     Υ['g'] -= Υ0['g']
+    λ['g'] -= λ0['g']
 
 # Calculting rho and other quantities
 ρ0 = np.exp(Υ0).evaluate()
@@ -260,6 +265,7 @@ grad_h0 = grad(h0).evaluate()
 grad_θ0 = grad(θ0).evaluate()
 grad_Υ0 = grad(Υ0).evaluate()
 grad_s0 = grad(s0).evaluate()
+grad_λ0 = grad(λ0).evaluate() # grad(ln kappa_0)
 
 ln_κ0 = np.log(κ0).evaluate()
 grad_ln_κ0 = grad(ln_κ0).evaluate()
@@ -311,6 +317,7 @@ Pr = mu*cP/κ0(z=0).evaluate()
 Pr_inv = 1/Pr
 κ_const = 16./3.
 κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa))
+λ = np.log(κ)
 
 # Υ = ln(ρ), θ = ln(h)
 problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
@@ -329,11 +336,13 @@ problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + R*lift(τ_u2,-1)@ez,
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((θ - (γ-1)*Υ - s_c_over_c_P*γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*s_c_over_c_P*dt(s)
-                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ)+grad_ln_κ0@grad(θ))
+                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ)+grad_λ0@grad(θ))#+grad(λ)@grad_θ0)
 #                      + ρ0_g*s_c_over_c_P*u@grad(s0)
                       + lift(τ_s1,-1) + lift(τ_s2,-2),
                       - ρ0_g*s_c_over_c_P*u@grad(s0)
                       - ρ0_g*s_c_over_c_P*u@grad(s)
+                      + R_inv*Pr_inv*grad(λ)@grad_θ0
+                      + R_inv*Pr_inv*(grad(λ)@grad(θ))
                       + R_inv*Pr_inv*(grad(θ)@grad(θ))#+grad_ln_κ0@grad(θ0))
                       + R_inv*Ma2*h0_inv_g*Phi )) # + R_inv*Ma2*0.5*h0_inv_g*Phi
 
@@ -354,6 +363,17 @@ problem.add_equation((s(z=Lz), -0.070102261)) # Don't need to hardcode this! It 
 #problem.add_equation((θ(z=Lz), 0))
 #problem.add_equation((θ(z=0), 0))
 logger.info("Problem built")
+
+amp = 1e-4
+zb, zt = zb.bounds
+noise = d.Field(name='noise', bases=b)
+noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
+noise.low_pass_filter(scales=0.25)
+
+#s['g'] = noise['g']*np.cos(np.pi/2*z/Lz)
+# pressure balanced ICs
+#Υ['g'] = -scrS*γ/(γ-1)*s['g']
+#θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g'] # this should evaluate to zero
 
 if args['--SBDF2']:
     ts = de.SBDF2
@@ -402,7 +422,7 @@ checkpoint.add_tasks(solver.state)
 vol_dt = 5.0
 snap_dt = 2.0
 trace_dt = 2.0
-average_dt = 2.0
+average_dt = 1.0
 
 # Adding file handlers for writing data
 # Instead of sim_dt, it is possible to use wall_dt and iter too. 
