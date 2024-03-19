@@ -96,14 +96,17 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     Υ0 = d.Field(name='Υ0', bases=zb)
     s0 = d.Field(name='s0', bases=zb)
     κ0 = d.Field(name='κ0', bases=zb)
+    λ0 = d.Field(name='λ0', bases=zb)
     h_poly = d.Field(name='h_poly', bases=zb)
     θ_poly = d.Field(name='θ_poly', bases=zb)
     rho_poly = d.Field(name='rho_poly', bases=zb)
     Υ_poly = d.Field(name='Υ_poly', bases=zb)
     s_poly = d.Field(name='s_poly', bases=zb)
     κ_poly = d.Field(name='κ_poly', bases=zb)
+    λ_poly = d.Field(name='λ_poly', bases=zb)
+    κ_test = d.Field(name='κ_test', bases=zb)
 
-    structure = {'h':h0, 's':s0, 'θ':θ0, 'Υ':Υ0, 'κ':κ0, 'h_poly':h_poly, 'θ_poly':θ_poly, 'rho_poly':rho_poly, 'Υ_poly':Υ_poly, 's_poly':s_poly, 'κ_poly':κ_poly}
+    structure = {'h':h0, 's':s0, 'θ':θ0, 'Υ':Υ0, 'κ':κ0, 'λ':λ0, 'h_poly':h_poly, 'θ_poly':θ_poly, 'rho_poly':rho_poly, 'Υ_poly':Υ_poly, 's_poly':s_poly, 'κ_poly':κ_poly, 'κ_test':κ_test, 'λ_poly':λ_poly}
     for key in structure:
         structure[key].change_scales(dealias)
     h0['g'] = h_bot + 1.0*zd*h_slope #enthalpy
@@ -111,12 +114,14 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     Υ0['g'] = (n*θ0).evaluate()['g'] # log rho
     s0['g'] = 0.0#((-1/m_ad)*Υ0+θ0).evaluate()['g'] # entropy - we are starting with a entropy profile that is 0
     κ0['g'] = (κ_const*h0**(3-bb)/(np.exp(Υ0))**(1+aa)).evaluate()['g']
+    λ0['g'] = np.log(κ0).evaluate()['g']
     h_poly['g'] = (1.0-zd/(1.0+n))
     θ_poly['g'] = np.log(h_poly['g'])
     rho_poly['g'] = (h_poly['g'])**n
     Υ_poly['g'] = np.log(rho_poly['g'])
     s_poly['g'] = (m_ad/cP)*θ_poly['g'] - (1.0/cP)*Υ_poly['g']
     κ_poly['g'] = κ_const
+    λ_poly['g'] = np.log(κ_poly).evaluate()['g']
 
     problem = de.NLBVP([h0, s0, Υ0, τ_s1, τ_s2, τ_h1])
     problem.add_equation((grad(h0) + lift(τ_h1,-1),
@@ -148,6 +153,11 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     # Re-evalaute theta and kappa after evolution
     θ0['g'] = np.log(h0).evaluate()['g']
     κ0['g'] = (κ_const*h0**(3-bb)/(np.exp(Υ0))**(1+aa)).evaluate()['g']
+    λ0['g'] = np.log(κ0).evaluate()['g']
+    κ_test['g'] = (κ_const*(h0-h_poly)**(3-bb)/(np.exp(Υ0)-np.exp(Υ_poly))**(1+aa)).evaluate()['g']
+
+    #print('Poly',κ_poly['g'])
+    #print('Total',κ0['g'])
 
     #Polytrope profiles for plotting stuff
     enth = h_bot - zd/(1+n)
@@ -184,17 +194,35 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
         plt.legend()
         plt.savefig('pert.pdf',bbox_inches='tight')
 
-        fig3, axs3 = plt.subplots(1,3, figsize=(9,4))
-        plt.subplot(1,3,1)
+        fig3, axs3 = plt.subplots(1,4, figsize=(12,4))
+        plt.subplot(1,4,1)
         plt.plot(zd,κ_poly['g'], label='kappa_poly')
         plt.legend()
-        plt.subplot(1,3,2)
+        plt.subplot(1,4,2)
         plt.plot(zd,κ0['g'], label='kappa_NLBVP')
         plt.legend()
-        plt.subplot(1,3,3)
+        plt.subplot(1,4,3)
         plt.plot(zd,κ0['g']-κ_poly['g'], label='perturbation')
         plt.legend()
+        plt.subplot(1,4,4)
+        plt.plot(zd,κ_test['g'], label='kappa_pert1')
+        plt.legend()
         plt.savefig('kappa.pdf',bbox_inches='tight')
+
+        fig4, axs4 = plt.subplots(1,4, figsize=(12,4))
+        plt.subplot(1,4,1)
+        plt.plot(zd,λ_poly['g'], label='lambda_poly')
+        plt.legend()
+        plt.subplot(1,4,2)
+        plt.plot(zd,λ0['g'], label='lambda_NLBVP')
+        plt.legend()
+        plt.subplot(1,4,3)
+        plt.plot(zd,λ0['g']-λ_poly['g'], label='perturbation')
+        plt.legend()
+        plt.subplot(1,4,4)
+        plt.plot(zd,np.log(λ0['g']-λ_poly['g']), label='kappa_pert_from_lambda')
+        plt.legend()
+        plt.savefig('lambda.pdf',bbox_inches='tight')
 
         fig, axs = plt.subplots(1, 5, figsize=(13, 4))
         fig.subplots_adjust(hspace=0.9, wspace=0.4)
