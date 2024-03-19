@@ -231,7 +231,6 @@ s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
 
 if s0['c'].size > 0:
-   print(rank)
    s0['c'][0,0,:] = structure['s_poly']['c']
    θ0['c'][0,0,:] = structure['θ_poly']['c']
    Υ0['c'][0,0,:] = structure['Υ_poly']['c']
@@ -240,7 +239,6 @@ if s0['c'].size > 0:
    θ['c'][0,0,:] = structure['θ']['c']
    Υ['c'][0,0,:] = structure['Υ']['c']
    κ['c'][0,0,:] = structure['κ']['c']
-   print("Hello!")
 
 for q in (s0,θ0,Υ0,κ0,s,θ,Υ,κ):
     q.require_grid_space()
@@ -311,7 +309,6 @@ if verbose:
 # Defining the Prandtl number here.
 Pr = mu*cP/κ0(z=0).evaluate()
 Pr_inv = 1/Pr
-#print(Pr,type(Pr),type(R_inv),type(Pr_inv))
 #κ_const = 16./3.
 #κ['g'] = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)).evaluate()['g']
 
