@@ -309,8 +309,8 @@ if verbose:
 # Defining the Prandtl number here.
 Pr = mu*cP/κ0(z=0).evaluate()
 Pr_inv = 1/Pr
-#κ_const = 16./3.
-#κ['g'] = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)).evaluate()['g']
+κ_const = 16./3.
+κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa))
 
 # Υ = ln(ρ), θ = ln(h)
 problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
