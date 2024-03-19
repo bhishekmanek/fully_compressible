@@ -177,6 +177,7 @@ z = zb.local_grid(1)
 θ = d.Field(name='θ', bases=b)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
+κ = d.Field(name='κ', bases=b)
 u = d.VectorField(c, name='u', bases=b)
 
 # Taus
@@ -228,37 +229,27 @@ h0 = d.Field(name='h0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
-#s_tot = d.Field(name='s_tot', bases=b)
-#θ_tot = d.Field(name='θ_tot', bases=b)
-#Υ_tot = d.Field(name='Υ_tot', bases=b)
 
-if h0['c'].size > 0:
+if s0['c'].size > 0:
+   print(rank)
    s0['c'][0,0,:] = structure['s_poly']['c']
    θ0['c'][0,0,:] = structure['θ_poly']['c']
    Υ0['c'][0,0,:] = structure['Υ_poly']['c']
-   κ0['c'][0,0,:] = structure['κ']['c']
+   κ0['c'][0,0,:] = structure['κ_poly']['c']
    s['c'][0,0,:] = structure['s']['c']
    θ['c'][0,0,:] = structure['θ']['c']
    Υ['c'][0,0,:] = structure['Υ']['c']
-#   s_tot['c'][0,0,:] = structure['s']['c']
-#   θ_tot['c'][0,0,:] = structure['θ']['c']
-#   Υ_tot['c'][0,0,:] = structure['Υ']['c']
+   κ['c'][0,0,:] = structure['κ']['c']
+   print("Hello!")
 
-for q in (s0,θ0,Υ0,s,θ,Υ):
+for q in (s0,θ0,Υ0,κ0,s,θ,Υ,κ):
     q.require_grid_space()
 
-#for q in (s0,θ0,Υ0,s_tot,θ_tot,Υ_tot):
-#    q.require_grid_space()
-
 if (s0['g'].size > 0):
+    κ['g'] -= κ0['g']
     s['g'] -= s0['g']
     θ['g'] -= θ0['g']
     Υ['g'] -= Υ0['g']
-
-#if (s0['g'].size > 0):
-#    s['g'] = s_tot['g'] - s0['g']
-#    θ['g'] = θ_tot['g'] - θ0['g']
-#    Υ['g'] = Υ_tot['g'] - Υ0['g']
 
 # Calculting rho and other quantities
 ρ0 = np.exp(Υ0).evaluate()
@@ -289,6 +280,7 @@ grad_h0_g = de.Grid(grad(h0)).evaluate()
 θ_bot = θ0(z=0).evaluate()['g']
 θ_top = θ0(z=Lz).evaluate()['g']
 
+
 if rank ==0:
     logger.info("Δθ = {:.2g} ({:.2g} to {:.2g})".format(θ_bot[0][0][0]-θ_top[0][0][0],θ_bot[0][0][0],θ_top[0][0][0]))
     logger.info("ΔΥ = {:.2g} ({:.2g} to {:.2g})".format(Υ_bot[0][0][0]-Υ_top[0][0][0],Υ_bot[0][0][0],Υ_top[0][0][0]))
@@ -317,8 +309,11 @@ if verbose:
     fig.savefig('structure.pdf')
 
 # Defining the Prandtl number here.
-Pr = mu*cP/κ0
+Pr = mu*cP/κ0(z=0).evaluate()
 Pr_inv = 1/Pr
+#print(Pr,type(Pr),type(R_inv),type(Pr_inv))
+#κ_const = 16./3.
+#κ['g'] = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)).evaluate()['g']
 
 # Υ = ln(ρ), θ = ln(h)
 problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
