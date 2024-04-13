@@ -232,27 +232,20 @@ s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
 λ0 = d.Field(name='λ0', bases=zb)
 
+for q in structure:
+    structure[q].require_coeff_space()
+
 if s0['c'].size > 0:
    s0['c'][0,0,:] = structure['s_poly']['c']
    θ0['c'][0,0,:] = structure['θ_poly']['c']
    Υ0['c'][0,0,:] = structure['Υ_poly']['c']
-   κ0['c'][0,0,:] = structure['κ_poly']['c']
+   #κ0['c'][0,0,:] = structure['κ_poly']['c']
    λ0['c'][0,0,:] = structure['λ_poly']['c']
-   s['c'][0,0,:] = structure['s']['c']
-   θ['c'][0,0,:] = structure['θ']['c']
-   Υ['c'][0,0,:] = structure['Υ']['c']
-   κ['c'][0,0,:] = structure['κ']['c']
-   λ['c'][0,0,:] = structure['λ']['c']
-
-for q in (s0,θ0,Υ0,κ0,λ0,s,θ,Υ,κ,λ):
-    q.require_grid_space()
-
-if (s0['g'].size > 0):
-    κ['g'] -= κ0['g']
-    s['g'] -= s0['g']
-    θ['g'] -= θ0['g']
-    Υ['g'] -= Υ0['g']
-    λ['g'] -= λ0['g']
+   s['c'][0,0,:] = structure['s']['c'] - structure['s_poly']['c']
+   θ['c'][0,0,:] = structure['θ']['c'] - structure['θ_poly']['c']
+   Υ['c'][0,0,:] = structure['Υ']['c'] - structure['Υ_poly']['c']
+   κ['c'][0,0,:] = structure['κ']['c'] - structure['κ_poly']['c']
+   λ['c'][0,0,:] = structure['λ']['c'] - structure['λ_poly']['c']
 
 # Calculting rho and other quantities
 ρ0 = np.exp(Υ0).evaluate()
@@ -267,8 +260,8 @@ grad_Υ0 = grad(Υ0).evaluate()
 grad_s0 = grad(s0).evaluate()
 grad_λ0 = grad(λ0).evaluate() # grad(ln kappa_0)
 
-ln_κ0 = np.log(κ0).evaluate()
-grad_ln_κ0 = grad(ln_κ0).evaluate()
+#ln_κ0 = np.log(κ0).evaluate()
+#grad_ln_κ0 = grad(ln_κ0).evaluate()
 
 h0_g = de.Grid(h0).evaluate()
 h0_inv_g = de.Grid(1/h0).evaluate()
@@ -296,7 +289,7 @@ if verbose:
     fig, ax = plt.subplots(nrows=2)
 
 logger.info("NCC expansions:")
-for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*h0, ρ0*grad(θ0), ρ0*h0*grad(s0), ρ0*grad(ln_κ0), h0*grad(Υ0), h0*grad(s0)]:
+for ncc in [h0, ρ0, ρ0*grad(h0), grad(θ0), grad(λ0),ρ0*h0, ρ0*grad(θ0), ρ0*h0*grad(s0), ρ0*grad(λ0), h0*grad(Υ0), h0*grad(s0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
     if verbose:
         ncc = ncc.evaluate()
@@ -313,11 +306,17 @@ if verbose:
     fig.savefig('structure.pdf')
 
 # Defining the Prandtl number here.
-Pr = mu*cP/κ0(z=0).evaluate()
+Pr = mu*cP/np.exp(λ0(z=0)).evaluate()
 Pr_inv = 1/Pr
 κ_const = 16./3.
 κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa))
-λ = np.log(κ)
+λ = np.log(κ)#-lambda0
+
+λ = (3-bb)*θ-(1+aa)*Υ
+
+κ_shape = (np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
+κ_shape_1 = np.expm1(λ)
+
 
 # Υ = ln(ρ), θ = ln(h)
 problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
@@ -327,20 +326,21 @@ problem.add_equation((ρ0*(dt(u) + 1/Ma2*(h0*grad(θ) + grad_h0*θ)
                       - R_inv*viscous_terms
                       + lift(τ_u1,-1) + lift(τ_u2,-2),
                       - ρ0_g*u@grad(u)
-                      - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-θ)
+                      - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-(θ))
                       - 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(θ)
                       + 1/Ma2*scrS*ρ0_h0_g*np.expm1(θ)*grad(s)
-                      + 1/Ma2*scrS*ρ0_h0_g*grad_s0*(np.expm1(θ)-θ)
+                      + 1/Ma2*scrS*ρ0_h0_g*grad_s0*(np.expm1(θ)-(θ))
                       ))
 problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + R*lift(τ_u2,-1)@ez,
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((θ - (γ-1)*Υ - s_c_over_c_P*γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*s_c_over_c_P*dt(s)
-                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ)+grad_λ0@grad(θ))#+grad(λ)@grad_θ0)
+                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))#+grad_λ0@grad(θ))#+grad(λ)@grad_θ0)
 #                      + ρ0_g*s_c_over_c_P*u@grad(s0)
                       + lift(τ_s1,-1) + lift(τ_s2,-2),
                       - ρ0_g*s_c_over_c_P*u@grad(s0)
                       - ρ0_g*s_c_over_c_P*u@grad(s)
+                      + R_inv*Pr_inv*κ_shape*(lap(θ)+2*grad_θ0@grad(θ))
                       + R_inv*Pr_inv*grad(λ)@grad_θ0
                       + R_inv*Pr_inv*(grad(λ)@grad(θ))
                       + R_inv*Pr_inv*(grad(θ)@grad(θ))#+grad_ln_κ0@grad(θ0))
@@ -356,10 +356,10 @@ else:
     problem.add_equation((ez@(ex@e(z=Lz)), 0))
 #problem.add_equation((θ(z=0), 0)) #Ideally it should be np.log(h_bot)
 #problem.add_equation((θ(z=Lz), np.log(np.exp(-n_h)+bc_jump)))
-problem.add_equation((s(z=0), 0))
+#problem.add_equation((s(z=0), 0))
 problem.add_equation((s(z=Lz), -0.070102261)) # Don't need to hardcode this! It should be s0(Lz)-s_poly(Lz)
 #Old BC's
-#problem.add_equation((ez@grad(θ)(z=0), 0))
+problem.add_equation((ez@grad(θ)(z=0), 0))
 #problem.add_equation((θ(z=Lz), 0))
 #problem.add_equation((θ(z=0), 0))
 logger.info("Problem built")
@@ -369,11 +369,11 @@ zb, zt = zb.bounds
 noise = d.Field(name='noise', bases=b)
 noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
 noise.low_pass_filter(scales=0.25)
+noise['g'] *= np.cos(np.pi/2*z/Lz)
 
-#s['g'] = noise['g']*np.cos(np.pi/2*z/Lz)
-# pressure balanced ICs
-#Υ['g'] = -scrS*γ/(γ-1)*s['g']
-#θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g'] # this should evaluate to zero
+s['g'] += noise['g']
+Υ['g'] = -scrS*γ/(γ-1)*s['g']
+θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g']
 
 if args['--SBDF2']:
     ts = de.SBDF2
@@ -402,8 +402,8 @@ cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold
                      max_change=1.5, min_change=0.5, max_dt=max_Δt)
 cfl.add_velocity(u)
 
-ρ = ρ0*np.exp(Υ).evaluate()
-h = h0*np.exp(θ).evaluate()
+ρ = ρ0*(np.exp(Υ)-1).evaluate()
+h = h0*(np.exp(θ)-1).evaluate()
 KE = 0.5*ρ*u@u
 IE = 1/Ma2*ρ*h
 PE = -1/Ma2*ρ*h*(s+s0)
@@ -457,6 +457,7 @@ snap.add_task((ω@ω)(z=0.99*Lz), name='enstrophy top')
 
 # 1D average data
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=1, max_writes=1, mode=mode)
+averages.add_tasks(solver.state)
 averages.add_task(xy_avg(s+s0), name='stot(z)')
 averages.add_task(xy_avg(s), name='s(z)')
 averages.add_task(xy_avg(s-s0), name='sm(z)')
@@ -473,6 +474,9 @@ averages.add_task(xy_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
 averages.add_task(xy_avg(u@ez*ρ*h), name='F_h(z)')
 averages.add_task(xy_avg(-u@ez*ρ*h*s), name='F_PE(z)')
 averages.add_task(xy_avg(ω@ω), name='enstrophy(z)')
+averages.add_task(xy_avg(λ), name='λ(z)')
+averages.add_task(xy_avg(λ+λ0), name='λtot(z)')
+averages.add_task(xy_avg(λ-λ0), name='λm(z)')
 
 # Scalars - as a function of time
 Ma_ad2 = Ma2*u@u*cP/(γ*h)
