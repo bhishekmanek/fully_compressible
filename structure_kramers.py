@@ -156,9 +156,6 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     λ0['g'] = np.log(κ0).evaluate()['g']
     κ_test['g'] = (κ_const*(h0-h_poly)**(3-bb)/(np.exp(Υ0)-np.exp(Υ_poly))**(1+aa)).evaluate()['g']
 
-    #print('Poly',κ_poly['g'])
-    #print('Total',κ0['g'])
-
     #Polytrope profiles for plotting stuff
     enth = h_bot - zd/(1+n)
     dens = (enth)**n
@@ -169,12 +166,16 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
         fig1, axs1 = plt.subplots(1,5, figsize=(13,4))
         plt.subplot(1,5,1)
         plt.plot(zd,h_poly['g'], color='xkcd:dark grey', label='h')
+        plt.legend()
         plt.subplot(1,5,2)
         plt.plot(zd,θ_poly['g'], label='theta')
+        plt.legend()
         plt.subplot(1,5,3)
         plt.plot(zd,rho_poly['g'], label='rho')
+        plt.legend()
         plt.subplot(1,5,4)
         plt.plot(zd,Υ_poly['g'], label='Y')
+        plt.legend()
         plt.subplot(1,5,5)
         plt.plot(zd,s_poly['g'], label='s')
         plt.legend()
@@ -183,12 +184,16 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
         fig2, axs2 = plt.subplots(1,5, figsize=(13,4))
         plt.subplot(1,5,1)
         plt.plot(zd,h0['g']-h_poly['g'], color='xkcd:dark grey', label='h')
+        plt.legend()
         plt.subplot(1,5,2)
         plt.plot(zd,np.log(h0['g'])-θ_poly['g'], label='theta')
+        plt.legend()
         plt.subplot(1,5,3)
         plt.plot(zd,np.exp(Υ0['g'])-rho_poly['g'], label='rho')
+        plt.legend()
         plt.subplot(1,5,4)
         plt.plot(zd,Υ0['g']-Υ_poly['g'], label='Y')
+        plt.legend()
         plt.subplot(1,5,5)
         plt.plot(zd,s0['g']-s_poly['g'], label='s')
         plt.legend()
@@ -220,7 +225,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
         plt.plot(zd,λ0['g']-λ_poly['g'], label='perturbation')
         plt.legend()
         plt.subplot(1,4,4)
-        plt.plot(zd,np.log(λ0['g']-λ_poly['g']), label='kappa_pert_from_lambda')
+        plt.plot(zd,np.log(λ0['g'])-(λ_poly['g']), label='kappa_pert_from_lambda')
         plt.legend()
         plt.savefig('lambda.pdf',bbox_inches='tight')
 
@@ -234,6 +239,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
         plt.plot(zd,h0['g'], color='xkcd:dark grey', label='h')
         plt.plot(zd,enth, linestyle='dashed', color='red', label='polytrope')
         plt.legend()
+
         plt.subplot(1,6,2)
         plt.gca().set_title(r'$\theta=\log(h)$')
         plt.xlabel('z')
