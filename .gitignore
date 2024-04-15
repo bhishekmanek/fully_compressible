@@ -1,4 +1,5 @@
 # Standard
+*.h5
 *.png
 *.pdf
 *.aux
