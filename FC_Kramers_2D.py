@@ -409,7 +409,7 @@ Re.store_last = True
 N2.store_last = True
 
 # Checkpoint save - wall_dt is in seconds - wall_dt=6900 means that it dumps a checkpoint at 115 minutes - ideal for a 2hr run
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 28500, max_writes = 1, virtual_file=True, mode=mode)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 28500, max_writes = 1)#, virtual_file=True, mode=mode)
 checkpoint.add_tasks(solver.state)
 
 average_dt = 30.0
