@@ -3,7 +3,7 @@ Dedalus script for 3D compressible convection in a polytrope,
 with specified number of density scale heights of stratification.
 
 Usage:
-    FC_Kramers_3D.py [options]
+    FC_Kramers_3D_pert.py [options]
 
 Options:
     --R=<R>                              Reynolds number [default: 1e2]
@@ -99,7 +99,7 @@ mu = float(args['--mu'])
 aa = float(args['--aa'])
 bb = float(args['--bb'])
 bc_jump = float(args['--bc_jump'])
-n_poly = (3-bb)/(aa+1) #Polytropic index from the Kramers free parameters
+n_poly = (3.0-bb)/(aa+1.0) #Polytropic index from the Kramers free parameters
 
 m_ad = 1/(γ-1)
 
@@ -173,7 +173,6 @@ z = zb.local_grid(1)
 
 # Defining the fields on the bases b. log(h), log(rho), s, and u. 
 # Fields
-
 θ = d.Field(name='θ', bases=b)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
@@ -232,6 +231,7 @@ s0 = d.Field(name='s0', bases=zb)
 κ0 = d.Field(name='κ0', bases=zb)
 λ0 = d.Field(name='λ0', bases=zb)
 
+
 for q in structure:
     structure[q].require_coeff_space()
 
@@ -239,7 +239,7 @@ if s0['c'].size > 0:
    s0['c'][0,0,:] = structure['s_poly']['c']
    θ0['c'][0,0,:] = structure['θ_poly']['c']
    Υ0['c'][0,0,:] = structure['Υ_poly']['c']
-   #κ0['c'][0,0,:] = structure['κ_poly']['c']
+   κ0['c'][0,0,:] = structure['κ_poly']['c']
    λ0['c'][0,0,:] = structure['λ_poly']['c']
    s['c'][0,0,:] = structure['s']['c'] - structure['s_poly']['c']
    θ['c'][0,0,:] = structure['θ']['c'] - structure['θ_poly']['c']
@@ -258,7 +258,7 @@ grad_h0 = grad(h0).evaluate()
 grad_θ0 = grad(θ0).evaluate()
 grad_Υ0 = grad(Υ0).evaluate()
 grad_s0 = grad(s0).evaluate()
-grad_λ0 = grad(λ0).evaluate() # grad(ln kappa_0)
+grad_λ0 = grad(λ0).evaluate() # grad(ln kappa_0) # Should be zero because its a constant value for a polytrope
 
 #ln_κ0 = np.log(κ0).evaluate()
 #grad_ln_κ0 = grad(ln_κ0).evaluate()
@@ -317,7 +317,6 @@ Pr_inv = 1/Pr
 κ_shape = (np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
 κ_shape_1 = np.expm1(λ)
 
-
 # Υ = ln(ρ), θ = ln(h)
 problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
 problem.add_equation((ρ0*(dt(u) + 1/Ma2*(h0*grad(θ) + grad_h0*θ)
@@ -357,7 +356,7 @@ else:
 #problem.add_equation((θ(z=0), 0)) #Ideally it should be np.log(h_bot)
 #problem.add_equation((θ(z=Lz), np.log(np.exp(-n_h)+bc_jump)))
 #problem.add_equation((s(z=0), 0))
-problem.add_equation((s(z=Lz), -0.070102261)) # Don't need to hardcode this! It should be s0(Lz)-s_poly(Lz)
+problem.add_equation((s(z=Lz), -0.25595420664462))#070102261)) # Don't need to hardcode this! It should be s0(Lz)-s_poly(Lz)
 #Old BC's
 problem.add_equation((ez@grad(θ)(z=0), 0))
 #problem.add_equation((θ(z=Lz), 0))
@@ -371,9 +370,10 @@ noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
 noise.low_pass_filter(scales=0.25)
 noise['g'] *= np.cos(np.pi/2*z/Lz)
 
+# isobaric entropy perturbations, to avoid launching acoustic modes
 s['g'] += noise['g']
-Υ['g'] = -scrS*γ/(γ-1)*s['g']
-θ['g'] = scrS*γ*s['g'] + (γ-1)*Υ['g']
+Υ['g'] += -scrS*γ/(γ-1)*noise['g']
+θ['g'] += 0
 
 if args['--SBDF2']:
     ts = de.SBDF2
@@ -416,7 +416,7 @@ Re.store_last = True
 ω.store_last = True
 
 # Checkpoint save - wall_dt is in seconds
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 21000, max_writes = 1, virtual_file=True, mode=mode)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 21000, max_writes = 1)#, virtual_file=True, mode=mode)
 checkpoint.add_tasks(solver.state)
 
 vol_dt = 5.0
@@ -454,6 +454,8 @@ snap.add_task((ω@ω)(y=Ly/2), name='enstrophy xz midplane')
 snap.add_task((ω@ω)(x=Lx/2), name='enstrophy yz midpalne')
 snap.add_task((ω@ω)(z=Lz*3/4), name='enstrophy 0.75 z')
 snap.add_task((ω@ω)(z=0.99*Lz), name='enstrophy top')
+snap.add_task(θ,name='θ_snap_total')
+snap.add_task(x_avg(θ),name='θ_snap_xavg')
 
 # 1D average data
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=1, max_writes=1, mode=mode)
