@@ -324,7 +324,7 @@ problem.add_equation((ρ0*s_c_over_c_P*dt(s)
                       + R_inv*Pr_inv*(grad(λ)@grad(θ)) # New
                       + R_inv*Pr_inv*κ_shape*(grad(θ)@grad(θ))
                       + R_inv*Pr_inv*(grad(θ)@grad(θ)) # New
-                      + R_inv*Ma2*h0_inv_g*Phi/np.exp(θ))) # Change in term here
+                      + R_inv*Ma2*h0_inv_g*Phi )) # Change in term here
 
 if no_slip:
     problem.add_equation((u(z=0), 0))
