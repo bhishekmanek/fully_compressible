@@ -28,6 +28,8 @@ Options:
     --run_time_buoy=<run_time_buoy>      Run time, in buoyancy times
     --run_time_iter=<run_time_iter>      Run time, number of iterations; if not set, n_iter=np.inf
 
+    --data_dt=<data_dt>                  Time interval between two data dumps [default: 10]
+
     --restart=<restart>                  Merged chechpoint file to restart from.
 
     --ncc_cutoff=<ncc_cutoff>            Amplitude cutoff for NCCs [default: 1e-8]
@@ -394,7 +396,7 @@ IE = 1/Ma2*ρ0*np.exp(Υ)*h0*np.exp(θ)
 PE = -1/Ma2*ρ0*np.exp(Υ)*h0*np.exp(θ)*(s+s0)
 Re = (ρ0*np.exp(Υ)*R)*np.sqrt(u@u)
 ω = -div(skew(u))
-N2 = -((grad_φ*ez)@grad(s+s0))/cP
+N2 = ((grad_φ*ez)@grad(s+s0))/cP
 KE.store_last = True
 PE.store_last = True
 IE.store_last = True
@@ -403,49 +405,59 @@ Re.store_last = True
 N2.store_last = True
 
 # Checkpoint save - wall_dt is in seconds
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 28500, max_writes = 1)#, virtual_file=True, mode=mode)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 39096, max_writes = 1)#, virtual_file=True, mode=mode)
 checkpoint.add_tasks(solver.state)
 
-average_dt = 30.0
+data_dt = args['--data_dt']
+if data_dt != None:
+    data_dt = float(data_dt)
 
 # Adding file handlers for writing data
 # You can add an arbitrary number of file handlers to save different sets of tasks at different cadences and to different files. (Dedalus webpage)
 # Instead of sim_dt, it is possible to use wall_dt and iter too. 
 
-slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=average_dt, max_writes=10, mode=mode)
+slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=data_dt, max_writes=10, mode=mode)
 slice_output.add_task(s-x_avg(s), name='srem')
+slice_output.add_task(ω**2, name='enstrophy')
+slice_output.add_task(u@ex, name='ux')
+slice_output.add_task(u@ez, name='uz')
 
 # Horizontal averages
-averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=average_dt, max_writes=10, mode=mode)
-averages.add_task(x_avg(s+s0), name='stot(z)')
-averages.add_task(x_avg(s), name='s(z)')
-averages.add_task(x_avg(h), name='h(z)')
-averages.add_task(x_avg(h+h0), name='htot(z)') # same as h0*exp(theta)
+averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=data_dt, max_writes=10, mode=mode)
 averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*κ0*np.exp(λ)*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
-averages.add_task(x_avg((κ0*np.exp(λ)*grad(h))@ez), name='gradh(z)')
-averages.add_task(x_avg(θ), name='θ(z)')
-averages.add_task(x_avg(θ+θ0), name='θ_tot(z)')
-averages.add_task(x_avg(Υ), name='Υ(z)')
-averages.add_task(x_avg(Υ+Υ0), name='Υ_tot(z)')
-averages.add_task(κ0, name='κ0(z)')
-averages.add_task(x_avg(ρ), name='ρ(z)')
 averages.add_task(x_avg(0.5*(ρ+ρ0)*u@ez*u@u), name='F_KE(z)')
 averages.add_task(x_avg(u@ez*(ρ+ρ0)*(h+h0)/Ma2), name='F_h(z)')
 averages.add_task(x_avg(-u@ez*(ρ+ρ0)*(h+h0)*(s+s0)/Ma2), name='F_PE(z)')
 averages.add_task(x_avg(u@ez*(ρ+ρ0)*grad_φ/Ma2), name='F_g(z)')
+averages.add_task(x_avg(s), name='s(z)')
+averages.add_task(x_avg(s+s0), name='stot(z)')
+averages.add_task(x_avg(h), name='h(z)')
+averages.add_task(x_avg(h+h0), name='htot(z)') # same as h0*exp(theta)
+averages.add_task(x_avg(θ), name='θ(z)')
+averages.add_task(x_avg(θ+θ0), name='θ_tot(z)')
+averages.add_task(x_avg(Υ), name='Υ(z)')
+averages.add_task(x_avg(Υ+Υ0), name='Υ_tot(z)')
+averages.add_task(x_avg(κ), name='κ(z)')
+averages.add_task(x_avg(κ+κ0), name='κ_tot(z)')
 averages.add_task(x_avg(u@ez), name='uz(z)')
+averages.add_task(x_avg(N2), name='N2(z)')
+averages.add_task(x_avg(np.sqrt(τ_u1@τ_u1)), name='τ_u1')
+averages.add_task(x_avg(np.sqrt(τ_u2@τ_u2)), name='τ_u2')
+averages.add_task(x_avg(np.sqrt(τ_s1**2)), name='τ_s1')
+averages.add_task(x_avg(np.sqrt(τ_s2**2)), name='τ_s2')
 
-traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=average_dt, max_writes=10, mode=mode)
+Ma_ad2 = Ma2*u@u*cP/(γ*(h+h0))
+
+traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=0.1, max_writes=1e6, mode=mode)
 traces.add_task(avg(KE), name='KE')
 traces.add_task(avg(PE), name='PE')
 traces.add_task(avg(IE), name='IE')
 traces.add_task(avg(Re), name='Re')
 traces.add_task(avg(N2), name='BV_freq')
 traces.add_task(avg(ω**2), name='avg_enstrophy')
+traces.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
 
-Ma_ad2 = Ma2*u@u*cP/(γ*(h+h0))
-
-report_cadence = 1
+report_cadence = 10
 good_solution = True
 
 flow = flow_tools.GlobalFlowProperty(solver, cadence=report_cadence)

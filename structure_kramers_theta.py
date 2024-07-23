@@ -123,7 +123,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
                          ,-grad(θ0)@((4-bb)*grad(θ0)-(1+aa)*grad(Υ0))))
     problem.add_equation(((γ-1)*Υ0 + s_c_over_c_P*γ*s0, θ0))
     problem.add_equation((θ0(z=0), 0.0))
-    problem.add_equation((θ0(z=Lz), -n_h+bc_jump))
+    problem.add_equation((θ0(z=Lz), np.log(np.exp(-n_h)+bc_jump)))
     problem.add_equation((integ(np.exp(Υ0)), 0.5*Lz*(-Lz*h_slope)))
 
     # Solver
