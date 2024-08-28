@@ -7,6 +7,8 @@
 *.out
 *.blg
 *.bbl
+*.npz
+*.ipynb
 *~
 
 # Byte-compiled / optimized / DLL files

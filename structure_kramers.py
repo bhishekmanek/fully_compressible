@@ -32,7 +32,7 @@ dlog.setLevel(logging.WARNING)
 dlog = logging.getLogger('matplotlib')
 dlog.setLevel(logging.WARNING)
 
-def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, dealias=2,
+def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=False, dealias=2,
                               ncc_cutoff = 1e-10,tolerance = 1e-13, comm=None):
 
     import dedalus.public as de
@@ -43,19 +43,14 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     s_c_over_c_P = scrS = 1 # s_c/c_P = 1
 
     h_bot = 1
-    #h_slope = -1/(1+m_ad)
     grad_φ = (γ-1)/γ
-
-    κ_00 = 1
-    σ_sb = 1
 
     n = (3-bb)/(aa+1)
 
     h_slope = -1/(1+n)
-#    κ00=10000000.0
     κ00=1
     σ_sb=1
-    κ_const = 16*σ_sb/(3*κ00)
+    #κ_const = 0.00001#1.0#16*σ_sb/(3*κ00)
 
     Lz = -1/h_slope*(1-np.exp(-n_h))
 
@@ -165,6 +160,8 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=False, deali
     #Polytrope profiles for plotting stuff
     enth = h_bot - zd/(1+n)
     dens = (enth)**n
+
+    np.savez('theta.npz',h=np.log(h0['g'])-θ_poly['g'],z=zd,κ=κ0['g'],s=s0['g']-s_poly['g'])
 
     if verbose:
         import matplotlib.pyplot as plt
@@ -321,6 +318,7 @@ if __name__=='__main__':
 
     verbose = args['--verbose']
 
-    structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=verbose)
+    structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=verbose)
     for key in structure:
         print(structure[key], structure[key]['g'])
+        #print("Hello, theta",np.log(h0['g'])-θ_poly['g'])

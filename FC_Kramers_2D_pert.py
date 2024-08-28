@@ -6,9 +6,9 @@ Usage:
     FC_Kramers.py [options]
 
 Options:
-    --R=<R>                              Reynolds number [default: 1e2]
+    --Re=<Re>                            Reynolds number [default: 1000]
+    --Pr=<Pr>                            Prandtl number [default: 1]
     --Ma2=<Ma2>                          Square of Mach number [default: 1]
-    --mu=<mu>                            Dynamic viscosity [default: 0.01]
     --n_h=<n_h>                          Enthalpy scale heights [default: 0.5]
     --gamma=<gamma>                      Gamma of ideal gas (cp/cv) [default: 5/3]
     --aspect=<aspect_ratio>              Physical aspect ratio of the atmosphere [default: 4]
@@ -77,10 +77,11 @@ else:
 
 # Define all the parameters. aa, bb, bc_jump are used for solving the NLBVP and getting the background stratification.
 # mu is prescribed 
-R = float(args['--R'])
-R_inv = scrR = 1/R
+
 γ  = float(Fraction(args['--gamma']))
-mu = float(args['--mu'])
+Re = float(args['--Re'])
+Pr = float(args['--Pr'])
+R_inv = scrR = mu = 1/Re #dynamic shear viscosity
 aa = float(args['--aa'])
 bb = float(args['--bb'])
 bc_jump = float(args['--bc_jump'])
@@ -89,6 +90,7 @@ n_poly = (3-bb)/(aa+1) #Polytropic index from the Kramers free parameters
 m_ad = 1/(γ-1)
 
 cP = γ/(γ-1)
+κ_const = mu*cP
 Ma2 = float(args['--Ma2'])
 scrM = 1/Ma2
 s_c_over_c_P = scrS = 1 # s_c/c_P = 1
@@ -99,7 +101,7 @@ no_slip = args['--no_slip']
 data_dir = sys.argv[0].split('.py')[0]
 if no_slip:
     data_dir += '_NS'
-data_dir += "_nh{}_R{}_Ma2_{}_mu{}_bc_jump{}".format(args['--n_h'], args['--R'], args['--Ma2'], args['--mu'], args['--bc_jump'])
+data_dir += "_nh{}_Ma2_{}_bc_jump{}".format(args['--n_h'], args['--Ma2'], args['--bc_jump'])
 data_dir += "_a{}_npoly{}".format(args['--aspect'], n_poly)
 data_dir += "_nz{:d}_nx{:d}".format(nz,nx)
 if args['--label']:
@@ -128,7 +130,7 @@ import dedalus.public as de
 from dedalus.extras import flow_tools
 rank = MPI.COMM_WORLD.rank
 
-logger.info("Ma2 = {:.3g}, R = {:.3g}, R_inv = {:.3g}, mu = {:.3g}, γ = {:.3g}".format(Ma2, R, R_inv, mu, γ))
+logger.info("Ma2 = {:.3g}, γ = {:.3g}".format(Ma2, γ))
 
 logger.info(args)
 logger.info("saving data in: {}".format(data_dir))
@@ -198,7 +200,7 @@ Phi = 0.5*trace(e@e) - 1/3*(trace_e*trace_e)
 
 ############### Trying to bring structure in a parallel run #########################################################
 from structure_kramers import kramers_opacity_polytrope
-structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=True, comm=MPI.COMM_SELF)
+structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=True, comm=MPI.COMM_SELF)
 
 h0 = d.Field(name='h0', bases=zb)
 θ0 = d.Field(name='θ0', bases=zb)
@@ -277,26 +279,22 @@ if verbose:
     fig.savefig('structure.pdf')
 
 # Defining the Prandtl number here.
-Pr = mu*cP/np.exp(λ0(z=0)).evaluate()
+#Pr = mu*cP/np.exp(λ0(z=0)).evaluate() 
+mu = Pr*np.exp(λ0(z=0)).evaluate()/cP
+R = 1./mu
+R_inv = mu
+if rank == 0:
+    print('Reynolds number',R.evaluate()['g'])
 Pr_inv = 1/Pr
-κ_const = 16./3. # kramer kappa is constant for polytropes
+κ_const = 0.00001#1.0#16./3. # kramer kappa is constant for polytropes
 κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)) # full kappa is not constant because of the BC perturbation
-#λ = np.log(κ)#-lambda0
 
 λ = (3-bb)*θ-(1+aa)*Υ
 
 κ_shape = (np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
-#κ_shape_1 = np.expm1(λ)
 
 # For entropy perturbation boundary condition
 s_top = structure['s_top']['g'][0]
-
-#if rank == 0:
-#    s_top = s(z=Lz).evaluate()['g']
-#    print('Entropy perturbation at Lz',s_top)
-
-#s_top = -0.27763529
-#s_top = s(z=Lz).evaluate()['g']
 
 # Υ = ln(ρ), θ = ln(h)
 problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
@@ -394,7 +392,8 @@ h = h0*(np.exp(θ)-1).evaluate()
 KE = 0.5*ρ0*np.exp(Υ)*u@u
 IE = 1/Ma2*ρ0*np.exp(Υ)*h0*np.exp(θ)
 PE = -1/Ma2*ρ0*np.exp(Υ)*h0*np.exp(θ)*(s+s0)
-Re = (ρ0*np.exp(Υ)*R)*np.sqrt(u@u)
+#Re = (ρ0*np.exp(Υ)*R)*np.sqrt(u@u)
+Re = (ρ0*np.exp(Υ))*np.sqrt(u@u)/mu
 ω = -div(skew(u))
 N2 = ((grad_φ*ez)@grad(s+s0))/cP
 KE.store_last = True
@@ -457,7 +456,7 @@ traces.add_task(avg(N2), name='BV_freq')
 traces.add_task(avg(ω**2), name='avg_enstrophy')
 traces.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
 
-report_cadence = 10
+report_cadence = 1
 good_solution = True
 
 flow = flow_tools.GlobalFlowProperty(solver, cadence=report_cadence)
