@@ -3,7 +3,7 @@ Dedalus script for 2D compressible convection in a polytrope,
 with specified number of density scale heights of stratification.
 
 Usage:
-    FC_Kramers.py [options]
+    FC_Kramers_2D_pert.py [options]
 
 Options:
     --Re=<Re>                            Reynolds number [default: 1000]
@@ -76,12 +76,12 @@ else:
     run_time = np.inf
 
 # Define all the parameters. aa, bb, bc_jump are used for solving the NLBVP and getting the background stratification.
-# mu is prescribed 
 
 γ  = float(Fraction(args['--gamma']))
 Re = float(args['--Re'])
 Pr = float(args['--Pr'])
-R_inv = scrR = mu = 1/Re #dynamic shear viscosity
+R_inv = scrR = mu = 1./Re #dynamic shear viscosity
+Pr_inv = 1./Pr
 aa = float(args['--aa'])
 bb = float(args['--bb'])
 bc_jump = float(args['--bc_jump'])
@@ -101,8 +101,8 @@ no_slip = args['--no_slip']
 data_dir = sys.argv[0].split('.py')[0]
 if no_slip:
     data_dir += '_NS'
-data_dir += "_nh{}_Ma2_{}_bc_jump{}".format(args['--n_h'], args['--Ma2'], args['--bc_jump'])
-data_dir += "_a{}_npoly{}".format(args['--aspect'], n_poly)
+data_dir += "_nh{}_Ma2_{}_Re_{}_Pr_{}_npoly{}_bc_jump{}".format(args['--n_h'], args['--Ma2'], Re, Pr, n_poly, args['--bc_jump'])
+data_dir += "_a{}".format(args['--aspect'])
 data_dir += "_nz{:d}_nx{:d}".format(nz,nx)
 if args['--label']:
     data_dir += '_{:s}'.format(args['--label'])
@@ -278,19 +278,8 @@ if verbose:
     ax[1].legend()
     fig.savefig('structure.pdf')
 
-# Defining the Prandtl number here.
-#Pr = mu*cP/np.exp(λ0(z=0)).evaluate() 
-mu = Pr*np.exp(λ0(z=0)).evaluate()/cP
-R = 1./mu
-R_inv = mu
-if rank == 0:
-    print('Reynolds number',R.evaluate()['g'])
-Pr_inv = 1/Pr
-κ_const = 0.00001#1.0#16./3. # kramer kappa is constant for polytropes
 κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)) # full kappa is not constant because of the BC perturbation
-
 λ = (3-bb)*θ-(1+aa)*Υ
-
 κ_shape = (np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
 
 # For entropy perturbation boundary condition
@@ -309,7 +298,7 @@ problem.add_equation((ρ0*(dt(u) + 1/Ma2*(h0*grad(θ) + grad_h0*θ)
                       + 1/Ma2*scrS*ρ0_h0_g*np.expm1(θ)*grad(s)  
                       + 1/Ma2*scrS*ρ0_h0_g*grad_s0*(np.expm1(θ)-θ) 
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + R*lift(τ_u2,-1)@ez,
+problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + Re*lift(τ_u2,-1)@ez,
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((θ - (γ-1)*Υ - s_c_over_c_P*γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*s_c_over_c_P*dt(s)
