@@ -194,6 +194,7 @@ e = grad(u) + trans(grad(u))
 e.store_last = True
 
 viscous_terms = div(e) - 2/3*grad(div(u))
+viscous_diffusion = u@e - 2/3*u@grad(u)
 trace_e = trace(e)
 trace_e.store_last = True
 Phi = 0.5*trace(e@e) - 1/3*(trace_e*trace_e)
@@ -414,6 +415,7 @@ slice_output.add_task(u@ez, name='uz')
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=data_dt, max_writes=10, mode=mode)
 averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*κ0*np.exp(λ)*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
 averages.add_task(x_avg(0.5*(ρ+ρ0)*u@ez*u@u), name='F_KE(z)')
+averages.add_task(x_avg(-R_inv*(viscous_diffusion@ez)),name='F_viscous(z)')
 averages.add_task(x_avg(u@ez*(ρ+ρ0)*(h+h0)/Ma2), name='F_h(z)')
 averages.add_task(x_avg(-u@ez*(ρ+ρ0)*(h+h0)*(s+s0)/Ma2), name='F_PE(z)')
 averages.add_task(x_avg(u@ez*(ρ+ρ0)*grad_φ/Ma2), name='F_g(z)')
