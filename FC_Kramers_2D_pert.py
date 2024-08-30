@@ -414,6 +414,7 @@ slice_output.add_task(u@ez, name='uz')
 # Horizontal averages
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=data_dt, max_writes=10, mode=mode)
 averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*κ0*np.exp(λ)*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
+averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*np.exp(λ)*grad(h+h0)@ez), name='F_κtot(z)') # Without pert eqns, it is h-h0
 averages.add_task(x_avg(0.5*(ρ+ρ0)*u@ez*u@u), name='F_KE(z)')
 averages.add_task(x_avg(-R_inv*(viscous_diffusion@ez)),name='F_viscous(z)')
 averages.add_task(x_avg(u@ez*(ρ+ρ0)*(h+h0)/Ma2), name='F_h(z)')
