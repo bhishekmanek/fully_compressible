@@ -304,16 +304,16 @@ problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + Re*lift(τ_u2,-1)@ez,
 problem.add_equation((θ - (γ-1)*Υ - s_c_over_c_P*γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*s_c_over_c_P*dt(s)
                       - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))
-                      - R_inv*Pr_inv*(grad(λ)@grad_θ0) # New
+                      - κ_const*R_inv*Pr_inv*(grad(λ)@grad_θ0) # New
                       + ρ0*s_c_over_c_P*u@grad(s0)
                       + lift(τ_s1,-1) + lift(τ_s2,-2),
                       - ρ0_g*s_c_over_c_P*u@grad(s)
                       + R_inv*Pr_inv*κ_shape*(lap(θ)+2*grad_θ0@grad(θ))
                       + R_inv*Pr_inv*κ_shape*grad(λ)@grad_θ0
                       + R_inv*Pr_inv*κ_shape*(grad(λ)@grad(θ))
-                      + R_inv*Pr_inv*(grad(λ)@grad(θ)) # New
+                      + κ_const*R_inv*Pr_inv*(grad(λ)@grad(θ)) # New
                       + R_inv*Pr_inv*κ_shape*(grad(θ)@grad(θ))
-                      + R_inv*Pr_inv*(grad(θ)@grad(θ)) # New
+                      + κ_const*R_inv*Pr_inv*(grad(θ)@grad(θ)) # New
                       + R_inv*Ma2*h0_inv_g*Phi )) # Change in term here
 
 if no_slip:
