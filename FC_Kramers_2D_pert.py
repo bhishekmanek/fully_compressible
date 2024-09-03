@@ -281,7 +281,7 @@ if verbose:
 
 κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)) # full kappa is not constant because of the BC perturbation
 λ = (3-bb)*θ-(1+aa)*Υ
-κ_shape = (np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
+κ_shape = κ_const*(np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
 
 # For entropy perturbation boundary condition
 s_top = structure['s_top']['g'][0]
@@ -303,7 +303,7 @@ problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + Re*lift(τ_u2,-1)@ez,
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((θ - (γ-1)*Υ - s_c_over_c_P*γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*s_c_over_c_P*dt(s)
-                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))
+                      - κ_const*R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))
                       - κ_const*R_inv*Pr_inv*(grad(λ)@grad_θ0) # New
                       + ρ0*s_c_over_c_P*u@grad(s0)
                       + lift(τ_s1,-1) + lift(τ_s2,-2),
