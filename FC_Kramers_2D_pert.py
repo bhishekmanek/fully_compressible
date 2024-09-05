@@ -90,7 +90,7 @@ n_poly = (3-bb)/(aa+1) #Polytropic index from the Kramers free parameters
 m_ad = 1/(γ-1)
 
 cP = γ/(γ-1)
-κ_const = mu*cP
+κ_const = mu*cP/Pr
 Ma2 = float(args['--Ma2'])
 scrM = 1/Ma2
 s_c_over_c_P = scrS = 1 # s_c/c_P = 1
