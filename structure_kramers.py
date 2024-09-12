@@ -31,9 +31,10 @@ for system in ['evaluator', 'matplotlib']:
     logging.getLogger(system).setLevel(logging.WARNING)
 import dedalus.public as de
 
+dealias = 2
+
 def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
-                              verbose=False, dealias=2,
-                              ncc_cutoff=1e-10, tolerance=1e-13,
+                              dealias=dealias, ncc_cutoff=1e-10, tolerance=1e-13,
                               comm=None):
     import numpy as np
     cP = γ/(γ-1)
@@ -47,57 +48,51 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
     h_slope = -1/(1+n)
     Lz = -1/h_slope*(1-np.exp(-n_h))
 
-    c = de.CartesianCoordinates('z')
-    d = de.Distributor(c, comm=comm, dtype=np.float64)
-    zb = de.ChebyshevT(c.coords[-1], size=nz, bounds=(0, Lz), dealias=dealias)
-    b = zb
-    z = d.local_grid(zb)
-    zd = d.local_grid(zb, scale=dealias)
+    coords = de.CartesianCoordinates('z')
+    dist = de.Distributor(coords, comm=comm, dtype=np.float64)
+    zb = de.ChebyshevT(coords.coords[-1], size=nz, bounds=(0, Lz), dealias=dealias)
+    bases = zb
+    z = dist.local_grid(zb)
+    z_grid = dist.Field(name='z_grid', bases=bases)
+    z_grid['g'] = z
 
     # Fields
-    θ = d.Field(name='θ', bases=b)
-    Y = d.Field(name='Y', bases=b)
-    s = d.Field(name='s', bases=b)
-    κ = d.Field(name='κ', bases=b)
+    θ = dist.Field(name='θ', bases=bases)
+    Υ = dist.Field(name='Υ', bases=bases)
+    s = dist.Field(name='s', bases=bases)
+    κ = dist.Field(name='κ', bases=bases)
 
     # Taus
-    lift_basis = zb.derivative_basis(2)
-    lift = lambda A, n: de.Lift(A, lift_basis, n)
+    lift_basis2 = zb.derivative_basis(2)
+    lift2 = lambda A, n: de.Lift(A, lift_basis2, n)
     lift_basis1 = zb.derivative_basis(1)
     lift1 = lambda A, n: de.Lift(A, lift_basis1, n)
-    τ_h1 = d.VectorField(c, name='τ_h1')
-    τ_s1 = d.Field(name='τ_s1')
-    τ_s2 = d.Field(name='τ_s2')
+    τ_h1 = dist.VectorField(coords, name='τ_h1')
+    τ_s1 = dist.Field(name='τ_s1')
+    τ_s2 = dist.Field(name='τ_s2')
 
     # Parameters and operators
-    ez, = c.unit_vector_fields(d)
+    ez, = coords.unit_vector_fields(dist)
 
-    # NLBVP goes here
-    # initial guess
-    h0 = d.Field(name='h0', bases=zb)
-    θ0 = d.Field(name='θ0', bases=zb)
-    Υ0 = d.Field(name='Υ0', bases=zb)
-    s0 = d.Field(name='s0', bases=zb)
-
-    structure = {'h':h0, 's':s0, 'θ':θ0, 'Υ':Υ0} #, 'κ':κ0, 'λ':λ0, 'h_poly':h_poly, 'θ_poly':θ_poly, 'rho_poly':rho_poly, 'Υ_poly':Υ_poly, 's_poly':s_poly, 'κ_poly':κ_poly, 'κ_test':κ_test, 'λ_poly':λ_poly, 's_top':s_top}
+    structure = {'s':s, 'θ':θ, 'Υ':Υ, 'z':z_grid}
     for key in structure:
         structure[key].change_scales(dealias)
-    h0['g'] = h_bot + 1.0*zd*h_slope #enthalpy
-    θ0['g'] = np.log(h0).evaluate()['g'] # log enthalpy
-    Υ0['g'] = (n*θ0).evaluate()['g'] # log rho
-    s0['g'] = 0.0#((-1/m_ad)*Υ0+θ0).evaluate()['g'] # entropy - we are starting with a entropy profile that is 0
+    # initial guess: polytrope
+    θ['g'] = np.log(1+z_grid*h_slope).evaluate()['g'] # log enthalpy
+    Υ['g'] = (n*θ).evaluate()['g'] # polytrope
+    s['g'] = (1/γ*θ - (γ-1)/γ*Υ).evaluate()['g'] # EOS
 
     δS = bc_jump
-    vars = [θ0, Υ0, s0]
+    vars = [θ, Υ, s]
     taus = [τ_s1, τ_s2, τ_h1]
     problem = de.NLBVP(vars+taus, namespace=locals())
     # assumes s_c_over_c_P = 1
-    problem.add_equation("grad(θ0) + lift1(τ_h1,-1) = -grad_φ*ez*np.exp(-θ0) + grad(s0)")
-    problem.add_equation("lap(θ0) + lift(τ_s1,-1) + lift(τ_s2,-2) = -grad(θ0)@((4-bb)*grad(θ0)-(1+aa)*grad(Υ0))")
-    problem.add_equation("(γ-1)*Υ0 + γ*s0 - θ0 = 0")
-    problem.add_equation("θ0(z=0) = 0.0")
-    problem.add_equation("θ0(z=Lz) = -n_h + γ*δS")
-    problem.add_equation("Υ0(z=0) = 0.0")
+    problem.add_equation("grad(θ) - grad(s) + lift1(τ_h1,-1) = -grad_φ*ez*np.exp(-θ)")
+    problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@((4-bb)*grad(θ)-(1+aa)*grad(Υ))")
+    problem.add_equation("θ - (γ-1)*Υ - γ*s  = 0")
+    problem.add_equation("θ(z=0) = 0.0")
+    problem.add_equation("θ(z=Lz) = -n_h + γ*δS")
+    problem.add_equation("Υ(z=0) = 0.0")
 
     # Solver
     solver = problem.build_solver(ncc_cutoff=ncc_cutoff)
@@ -112,63 +107,59 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
 
     return structure
 
-def plot_structure():
-    import matplotlib.pyplot as plt
-    κ0 = d.Field(name='κ0', bases=zb)
-    λ0 = d.Field(name='λ0', bases=zb)
-    h_poly = d.Field(name='h_poly', bases=zb)
-    θ_poly = d.Field(name='θ_poly', bases=zb)
-    rho_poly = d.Field(name='rho_poly', bases=zb)
-    Υ_poly = d.Field(name='Υ_poly', bases=zb)
-    s_poly = d.Field(name='s_poly', bases=zb)
-    κ_poly = d.Field(name='κ_poly', bases=zb)
-    λ_poly = d.Field(name='λ_poly', bases=zb)
-    κ_test = d.Field(name='κ_test', bases=zb)
-    s_top = d.Field(name='s_top')
+def plot_structure(structure, polytrope, aa, bb, dealias=dealias):
+    n = (3-bb)/(aa+1)
+    # atmosphere values from full solve
+    θ = structure['θ']
+    Υ = structure['Υ']
+    s = structure['s']
 
-    # Re-evalaute theta and kappa after evolution
-    θ0['g'] = np.log(h0).evaluate()['g']
-    κ0['g'] = (h0**(3-bb)/(np.exp(Υ0))**(1+aa)).evaluate()['g']
-    λ0['g'] = np.log(κ0).evaluate()['g']
-    κ_test['g'] = ((h0-h_poly)**(3-bb)/(np.exp(Υ0)-np.exp(Υ_poly))**(1+aa)).evaluate()['g']
-    s_top['g'] = s0(z=Lz).evaluate()['g']-s_poly(z=Lz).evaluate()['g']
+    # atmosphere values from related polytrope
+    θ_poly = polytrope['θ']
+    Υ_poly = polytrope['Υ']
+    s_poly = polytrope['s']
 
+    # auxiliary variables for plotting
+    h = np.exp(θ).evaluate()
+    ρ = np.exp(Υ).evaluate()
 
-    #Polytrope profiles for plotting stuff
-    enth = h_bot - zd/(1+n)
-    dens = (enth)**n
-    κ_0 = '{:.2f}'.format(κ_poly['g'][0])
-    λ_0 = '{:.2f}'.format(λ_poly['g'][0])
+    h_poly = np.exp(θ_poly).evaluate()
+    ρ_poly = np.exp(Υ_poly).evaluate()
 
-    κ0['g'] = (h0**(3-bb)/(np.exp(Υ0))**(1+aa)).evaluate()['g']
-    λ0['g'] = np.log(κ0).evaluate()['g']
-    h_poly['g'] = (1.0-zd/(1.0+n))
-    θ_poly['g'] = np.log(h_poly['g'])
-    rho_poly['g'] = (h_poly['g'])**n
-    Υ_poly['g'] = np.log(rho_poly['g'])
-    s_poly['g'] = (m_ad/cP)*θ_poly['g'] - (1.0/cP)*Υ_poly['g']
-    κ_poly['g'] = 1
-    λ_poly['g'] = np.log(κ_poly).evaluate()['g']
+    lnκ = (3-bb)*θ - (1+aa)*Υ
+    κ = np.exp(lnκ).evaluate()
 
+    lnκ_poly = (3-bb)*θ_poly - (1+aa)*Υ_poly
+    κ_poly = np.exp(lnκ_poly).evaluate()
+
+    κ_0 = '{:.2f}'.format(κ_poly.evaluate()['g'][0])
+    lnκ_0 = '{:.2f}'.format(lnκ_poly.evaluate()['g'][0])
+
+    z_grid = structure['z']
+    z_grid.change_scales(dealias)
+    z = z_grid['g']
+
+    for q in [θ, Υ, s, θ_poly, Υ_poly, s_poly]:
+        q.change_scales(dealias)
 
     fig, axs = plt.subplots(ncols=3, figsize=(12,4))
-    fig.suptitle(r'Background Stratification, $n = $'+f'{n}'+ ', $\kappa(z) = $'+f'{κ_0}'+', $\lambda(z) = \log(\kappa(z)) = $'+f'{λ_0}', fontsize=15)
+    fig.suptitle(r'Background Stratification, $n = $'+f'{n}'+ ', $\kappa(z) = $'+f'{κ_0}'+', $\lambda(z) = \log(\kappa(z)) = $'+f'{lnκ_0}', fontsize=15)
 
-    axs[0].plot(zd,h_poly['g'], color='xkcd:dark grey', label=r'$h$')
+    axs[0].plot(z, h_poly['g'], color='xkcd:dark grey', label=r'$h$')
     axs[0].legend(fontsize=12,loc='lower left')
 
     axs_0 = axs[0].twinx()
-    axs_0.plot(zd,θ_poly['g'], 'r--', label=r'$\theta = \log(h)$')
+    axs_0.plot(z, θ_poly['g'], 'r--', label=r'$\theta = \log(h)$')
 
-    axs[1].plot(zd,rho_poly['g'], color='xkcd:dark grey', label=r'$\rho$')
+    axs[1].plot(z, ρ_poly['g'], color='xkcd:dark grey', label=r'$\rho$')
     axs[1].legend(fontsize=12,loc='lower left')
 
     axs_1 = axs[1].twinx()
-    axs_1.plot(zd,Υ_poly['g'], 'r--', label=r'$\Upsilon = \log(\rho)$')
+    axs_1.plot(z, Υ_poly['g'], 'r--', label=r'$\Upsilon = \log(\rho)$')
     axs_1.tick_params(axis='y', labelcolor='r')
     axs_1.legend(fontsize=12,loc='upper right')
 
-    axs[2].plot(zd,s_poly['g'], color='xkcd:dark grey', label=r'$s$')
+    axs[2].plot(z, s_poly['g'], color='xkcd:dark grey', label=r'$s$')
     axs[2].legend(fontsize=12,loc='upper left')
 
     for axi in axs:
@@ -176,65 +167,65 @@ def plot_structure():
         axi.tick_params(axis='x', labelsize=10)
 
     fig.subplots_adjust(wspace=0.6)
+    fig.tight_layout()
     fig.savefig('poly.pdf', dpi=300, bbox_inches='tight')
 
     fig, axs = plt.subplots(ncols=5, figsize=(13,4))
-    axs[0].plot(zd,h0['g']-h_poly['g'], color='xkcd:dark grey', label='h')
-    axs[1].plot(zd,np.log(h0['g'])-θ_poly['g'], label='theta')
-    axs[2].plot(zd,np.exp(Υ0['g'])-rho_poly['g'], label='rho')
-    axs[3].plot(zd,Υ0['g']-Υ_poly['g'], label='Y')
-    axs[4].plot(zd,s0['g']-s_poly['g'], label='s')
+    axs[0].plot(z, h['g']-h_poly['g'], color='xkcd:dark grey', label='h')
+    axs[1].plot(z, θ['g']-θ_poly['g'], label='theta')
+    axs[2].plot(z, ρ['g']-ρ_poly['g'], label='rho')
+    axs[3].plot(z, Υ['g']-Υ_poly['g'], label='Y')
+    axs[4].plot(z, s['g']-s_poly['g'], label='s')
     for axi in axs:
         axi.legend()
+    fig.tight_layout()
     fig.savefig('pert.pdf',bbox_inches='tight')
 
-    fig, axs = plt.subplots(ncols=4, figsize=(12,4))
-    axs[0].plot(zd,κ_poly['g'], label='kappa_poly')
-    axs[1].plot(zd,κ0['g'], label='kappa_NLBVP')
-    axs[2].plot(zd,κ0['g']-κ_poly['g'], label='perturbation')
-    axs[3].plot(zd,κ_test['g'], label='kappa_pert1')
+    fig, axs = plt.subplots(ncols=3, figsize=(12,4))
+    axs[0].plot(z, κ_poly['g'], label='kappa_poly')
+    axs[1].plot(z, κ['g'], label='kappa_NLBVP')
+    axs[2].plot(z, κ['g']-κ_poly['g'], label='perturbation')
     for axi in axs:
         axi.legend()
+    fig.tight_layout()
     fig.savefig('kappa.pdf',bbox_inches='tight')
 
-    fig, axs = plt.subplots(ncols=4, figsize=(12,4))
-    axs[0].plot(zd,λ_poly['g'], label='lambda_poly')
-    axs[1].plot(zd,λ0['g'], label='lambda_NLBVP')
-    axs[2].plot(zd,λ0['g']-λ_poly['g'], label='perturbation')
-    axs[3].plot(zd,λ0['g'], label='kappa_pert_from_lambda')
+    fig, axs = plt.subplots(ncols=3, figsize=(12,4))
+    axs[0].plot(z, lnκ_poly['g'], label='lnκ_poly')
+    axs[1].plot(z, lnκ['g'], label='lnκ_NLBVP')
+    axs[2].plot(z, lnκ['g']-lnκ_poly['g'], label='perturbation')
     for axi in axs:
         axi.legend()
+    fig.tight_layout()
     fig.savefig('lambda.pdf',bbox_inches='tight')
 
     fig, axs = plt.subplots(ncols=6, figsize=(13, 4))
     fig.subplots_adjust(hspace=0.9, wspace=0.4)
     axs[0].text(-0.45, 1.1, '(b) a={:.3g}'.format(aa) + ', b={:.3g}'.format(bb) + ', n={:.3g}'.format(n), fontsize=12)
-    #plt.text(-0.45, 2.13, '(b) a={:.3g}'.format(aa) + ', b={:.3g}'.format(bb) + ', n={:.3g}'.format(n), fontsize=12)
-
     axs[0].set_title(r'$h$')
-    axs[0].plot(zd,h0['g'], color='xkcd:dark grey', label='h')
-    axs[0].plot(zd,enth, linestyle='dashed', color='red', label='polytrope')
+    axs[0].plot(z, h['g'], color='xkcd:dark grey', label='h')
+    axs[0].plot(z, h_poly['g'], linestyle='dashed', color='red', label='polytrope')
 
     axs[1].set_title(r'$\theta=\log(h)$')
-    axs[1].plot(zd,np.log(h0['g']), label=r'$\log(h)$')
+    axs[1].plot(z, θ['g'], label=r'$\log(h)$')
 
     axs[2].set_title(r'$\rho$')
-    axs[2].plot(zd,np.exp(Υ0['g']), label=r'$\rho$')
-    axs[2].plot(zd,dens, linestyle='dashed', color='blue', label='polytrope')
+    axs[2].plot(z, ρ['g'], label=r'$\rho$')
+    axs[2].plot(z, ρ_poly['g'], linestyle='dashed', color='blue', label='polytrope')
 
     axs[3].set_title(r'$Y=\log(\rho)$')
-    axs[3].plot(zd,Υ0['g'], label=r'$\log(\rho)$')
+    axs[3].plot(z, Υ['g'], label=r'$\log(\rho)$')
 
     axs[4].set_title(r'$s$')
-    axs[4].plot(zd,s0['g'], color='xkcd:brick red', label=r'$s$')
+    axs[4].plot(z, s['g'], color='xkcd:brick red', label=r'$s$')
 
     axs[5].set_title('kappa')
-    axs[5].plot(zd,κ0['g'], label='kappa')
+    axs[5].plot(z, κ['g'], label='kappa')
     for axi in axs:
         axi.set_xlabel('z')
         axi.legend()
-
-    fig.savefig('kramers_solve_bc_jump{}_a{}_b{:.3g}_n{:.3g}.pdf'.format(bc_jump,aa,bb,n),bbox_inches='tight')
+    #fig.tight_layout()
+    fig.savefig(f'kramers_solve_bc_jump{bc_jump}_a{aa}_b{bb:.3g}_n{n:.3g}.pdf',bbox_inches='tight')
 
 
 if __name__=='__main__':
@@ -250,16 +241,16 @@ if __name__=='__main__':
     #Free parameters (exponents) characterizing Kramers-like opacity (see. Barekat & Brandenburg 2014)
     aa = float(args['--aa'])
     bb = float(args['--bb'])
-
     bc_jump = float(args['--bc_jump'])
-
     γ  = float(Fraction(args['--gamma']))
-    m_ad = 1/(γ-1)
-
     n_h = float(args['--n_h'])
 
-    verbose = args['--verbose']
+    structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump)
 
-    structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, verbose=verbose)
+    polytrope = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, 0)
+
+    if args['--verbose']:
+        plot_structure(structure, polytrope, aa, bb)
+
     for key in structure:
         print(structure[key], structure[key]['g'])
