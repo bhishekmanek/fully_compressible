@@ -16,6 +16,10 @@ Options:
     --gamma=<gamma>     Gamma of ideal gas (cp/cv) [default: 5/3]
     --nz=<nz>           vertical z (chebyshev) resolution [default: 64]
 
+    --non-Kramers       Use a fixed kappa (e.g., non-Kramers)
+
+    --ref_point=<ref>   Reference point, bottom, bot or top [default: bot]
+
     --ncc_cutoff=<ncc>  Amplitude cutoff for NCCs [default: 1e-8]
     --aa=<aa>           Value of the free parameter a [default: 1.0]
     --bb=<bb>           Value of the free parameter b [default: -3.5]
@@ -34,19 +38,36 @@ import dedalus.public as de
 dealias = 2
 
 def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
+                              ref_point='bottom',
+                              Kramers=True,
                               dealias=dealias, ncc_cutoff=1e-10, tolerance=1e-13,
                               comm=None):
     import numpy as np
-    cP = γ/(γ-1)
-    m_ad = 1/(γ-1)
-    s_c_over_c_P = scrS = 1 # s_c/c_P = 1
+    #cP = γ/(γ-1)
+    # m_ad = 1/(γ-1)
+    # s_c_over_c_P = scrS = 1 # s_c/c_P = 1
 
-    h_bot = 1
+    # h(z=0) = 1
+
     grad_φ = (γ-1)/γ
 
     n = (3-bb)/(aa+1)
+    if ref_point=='bottom' or ref_point=='bot':
+        h_top = np.exp(-n_h)
+        h_bot = 1
+    elif ref_point=='top':
+        h_top = 1
+        h_bot = np.exp(n_h)
+    else:
+        raise ValueError(f'reference point "{ref_point}" not currently implemented')
     h_slope = -1/(1+n)
-    Lz = -1/h_slope*(1-np.exp(-n_h))
+    Lz = 1/h_slope*(h_top - h_bot) # polytrope intuition
+    if ref_point=='bottom' or ref_point=='bot':
+        z_ref = 0
+    elif ref_point=='top':
+        z_ref = Lz
+    θ_top = np.log(h_top)
+    θ_bot = np.log(h_bot)
 
     coords = de.CartesianCoordinates('z')
     dist = de.Distributor(coords, comm=comm, dtype=np.float64)
@@ -78,7 +99,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
     for key in structure:
         structure[key].change_scales(dealias)
     # initial guess: polytrope
-    θ['g'] = np.log(1+z_grid*h_slope).evaluate()['g'] # log enthalpy
+    θ['g'] = np.log(np.exp(θ_bot)+z_grid*h_slope).evaluate()['g'] # log enthalpy
     Υ['g'] = (n*θ).evaluate()['g'] # polytrope
     s['g'] = (1/γ*θ - (γ-1)/γ*Υ).evaluate()['g'] # EOS
 
@@ -88,11 +109,14 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
     problem = de.NLBVP(vars+taus, namespace=locals())
     # assumes s_c_over_c_P = 1
     problem.add_equation("grad(θ) - grad(s) + lift1(τ_h1,-1) = -grad_φ*ez*np.exp(-θ)")
-    problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@((4-bb)*grad(θ)-(1+aa)*grad(Υ))")
+    if Kramers:
+        problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@((4-bb)*grad(θ)-(1+aa)*grad(Υ))")
+    else:
+        problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@*grad(θ)")
     problem.add_equation("θ - (γ-1)*Υ - γ*s  = 0")
-    problem.add_equation("θ(z=0) = 0.0")
-    problem.add_equation("θ(z=Lz) = -n_h + γ*δS")
-    problem.add_equation("Υ(z=0) = 0.0")
+    problem.add_equation("θ(z=0)  = θ_bot")
+    problem.add_equation("θ(z=Lz) = θ_top + γ*δS")
+    problem.add_equation("Υ(z=z_ref) = 0 ")
 
     # Solver
     solver = problem.build_solver(ncc_cutoff=ncc_cutoff)
@@ -107,7 +131,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
 
     return structure
 
-def plot_structure(structure, polytrope, aa, bb, dealias=dealias):
+def plot_structure(structure, polytrope, aa, bb, dealias=dealias, label=None):
     n = (3-bb)/(aa+1)
     # atmosphere values from full solve
     θ = structure['θ']
@@ -203,30 +227,32 @@ def plot_structure(structure, polytrope, aa, bb, dealias=dealias):
     fig.subplots_adjust(hspace=0.9, wspace=0.4)
     axs[0].text(-0.45, 1.1, '(b) a={:.3g}'.format(aa) + ', b={:.3g}'.format(bb) + ', n={:.3g}'.format(n), fontsize=12)
     axs[0].set_title(r'$h$')
-    axs[0].plot(z, h['g'], color='xkcd:dark grey', label='h')
-    axs[0].plot(z, h_poly['g'], linestyle='dashed', color='red', label='polytrope')
+    axs[0].plot(z, h['g'], color='xkcd:dark grey', label='$h$')
+    axs[0].plot(z, h_poly['g'], linestyle='dashed', color='red', label=r'$h_\text{poly}$')
 
     axs[1].set_title(r'$\theta=\log(h)$')
     axs[1].plot(z, θ['g'], label=r'$\log(h)$')
 
     axs[2].set_title(r'$\rho$')
     axs[2].plot(z, ρ['g'], label=r'$\rho$')
-    axs[2].plot(z, ρ_poly['g'], linestyle='dashed', color='blue', label='polytrope')
+    axs[2].plot(z, ρ_poly['g'], linestyle='dashed', color='blue', label=r'$\rho_\text{poly}$')
 
     axs[3].set_title(r'$Y=\log(\rho)$')
     axs[3].plot(z, Υ['g'], label=r'$\log(\rho)$')
 
     axs[4].set_title(r'$s$')
     axs[4].plot(z, s['g'], color='xkcd:brick red', label=r'$s$')
+    axs[4].plot(z, s_poly['g'], color='xkcd:dark grey', label=r'$s_\text{poly}$', linestyle='dashed', alpha=0.5)
 
     axs[5].set_title('kappa')
     axs[5].plot(z, κ['g'], label='kappa')
     for axi in axs:
         axi.set_xlabel('z')
         axi.legend()
-    #fig.tight_layout()
-    fig.savefig(f'kramers_solve_bc_jump{bc_jump}_a{aa}_b{bb:.3g}_n{n:.3g}.pdf',bbox_inches='tight')
-
+    filename = f'kramers_solve_bc_jump{bc_jump}_a{aa}_b{bb:.3g}_n{n:.3g}'
+    if label:
+        filename += f'_{label}'
+    fig.savefig(f'{filename}.pdf',bbox_inches='tight')
 
 if __name__=='__main__':
     from docopt import docopt
@@ -244,13 +270,21 @@ if __name__=='__main__':
     bc_jump = float(args['--bc_jump'])
     γ  = float(Fraction(args['--gamma']))
     n_h = float(args['--n_h'])
+    ref_point = args['--ref_point']
 
-    structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump)
+    if args['--non-Kramers']:
+        Kramers = False
+    else:
+        Kramers = True
 
-    polytrope = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, 0)
+    structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
+                                          ref_point=ref_point, Kramers=Kramers)
+
+    polytrope = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, 0, ref_point=ref_point)
 
     if args['--verbose']:
-        plot_structure(structure, polytrope, aa, bb)
+        plot_structure(structure, polytrope, aa, bb, label=ref_point)
 
-    for key in structure:
-        print(structure[key], structure[key]['g'])
+    for key, q in structure.items():
+        q.change_scales(1)
+        print(q, q['g'])
