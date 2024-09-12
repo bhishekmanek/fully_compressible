@@ -10,17 +10,17 @@ The equations are in theta formalism:
 
 Usage:
     structure_kramers.py [options]
-		
-Options:
-    --n_h=<n_h>                          Enthalpy scale heights [default: 0.5]
-    --gamma=<gamma>                      Gamma of ideal gas (cp/cv) [default: 5/3]
-    --nz=<nz>                            vertical z (chebyshev) resolution [default: 64]
 
-    --ncc_cutoff=<ncc_cutoff>            Amplitude cutoff for NCCs [default: 1e-8]
-    --aa=<aa>			 	 Value of the free parameter a [default: 1.0]
-    --bb=<bb>				 Value of the free parameter b [default: -3.5]
-    --verbose                            Show structure plots at end of solve
-    --bc_jump=<bc_jump>			 Jump in the enthalpy top boundary condition [default: 0.0] 
+Options:
+    --n_h=<n_h>         Enthalpy scale heights [default: 0.5]
+    --gamma=<gamma>     Gamma of ideal gas (cp/cv) [default: 5/3]
+    --nz=<nz>           vertical z (chebyshev) resolution [default: 64]
+
+    --ncc_cutoff=<ncc>  Amplitude cutoff for NCCs [default: 1e-8]
+    --aa=<aa>           Value of the free parameter a [default: 1.0]
+    --bb=<bb>           Value of the free parameter b [default: -3.5]
+    --verbose           Show structure plots at end of solve
+    --bc_jump=<bc>      Jump in the enthalpy top boundary condition [default: 0]
 """
 
 import numpy as np
@@ -52,8 +52,8 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=Fa
     d = de.Distributor(c, comm=comm, dtype=np.float64)
     zb = de.ChebyshevT(c.coords[-1], size=nz, bounds=(0, Lz), dealias=dealias)
     b = zb
-    z = zb.local_grid(1)
-    zd = zb.local_grid(dealias)
+    z = d.local_grid(zb)
+    zd = d.local_grid(zb, scale=dealias)
 
     # Fields
     θ = d.Field(name='θ', bases=b)
@@ -165,7 +165,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=Fa
         axs1[0].legend(fontsize=12,loc='lower left')
         axs1[0].set_xlabel('z',fontsize=15)
         axs1[0].tick_params(axis='x', labelsize=10)
-        
+
         axs1_0 = axs1[0].twinx()
         axs1_0.plot(zd,θ_poly['g'], 'r--', label=r'$\theta = \log(h)$')
         axs1_0.tick_params(axis='y', labelcolor='r')
@@ -291,7 +291,7 @@ if __name__=='__main__':
     from docopt import docopt
     args = docopt(__doc__)
     from fractions import Fraction
-
+    print(args)
     ncc_cutoff = float(args['--ncc_cutoff'])
 
     #Resolution
@@ -309,6 +309,8 @@ if __name__=='__main__':
     n_h = float(args['--n_h'])
 
     verbose = args['--verbose']
+
+    κ_const = 1
 
     structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=verbose)
     for key in structure:
