@@ -43,13 +43,8 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
                               dealias=dealias, ncc_cutoff=1e-10, tolerance=1e-13,
                               comm=None):
     import numpy as np
-    #cP = γ/(γ-1)
-    # m_ad = 1/(γ-1)
-    # s_c_over_c_P = scrS = 1 # s_c/c_P = 1
-
-    # h(z=0) = 1
-
     grad_φ = (γ-1)/γ
+    δS = bc_jump
 
     n = (3-bb)/(aa+1)
     if ref_point=='bottom' or ref_point=='bot':
@@ -62,13 +57,15 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
         raise ValueError(f'reference point "{ref_point}" not currently implemented')
     h_slope = -1/(1+n)
     Lz = 1/h_slope*(h_top - h_bot) # polytrope intuition
-    if ref_point=='bottom' or ref_point=='bot':
-        z_ref = 0
-    elif ref_point=='top':
-        z_ref = Lz
     θ_top = np.log(h_top)
     θ_bot = np.log(h_bot)
-
+    if ref_point=='bottom' or ref_point=='bot':
+        z_ref = 0
+        #θ_top += γ*δS
+    elif ref_point=='top':
+        z_ref = Lz
+        #θ_bot -= γ*δS
+    θ_top += γ*δS
     coords = de.CartesianCoordinates('z')
     dist = de.Distributor(coords, comm=comm, dtype=np.float64)
     zb = de.ChebyshevT(coords.coords[-1], size=nz, bounds=(0, Lz), dealias=dealias)
@@ -103,7 +100,6 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
     Υ['g'] = (n*θ).evaluate()['g'] # polytrope
     s['g'] = (1/γ*θ - (γ-1)/γ*Υ).evaluate()['g'] # EOS
 
-    δS = bc_jump
     vars = [θ, Υ, s]
     taus = [τ_s1, τ_s2, τ_h1]
     problem = de.NLBVP(vars+taus, namespace=locals())
@@ -115,7 +111,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
         problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@*grad(θ)")
     problem.add_equation("θ - (γ-1)*Υ - γ*s  = 0")
     problem.add_equation("θ(z=0)  = θ_bot")
-    problem.add_equation("θ(z=Lz) = θ_top + γ*δS")
+    problem.add_equation("θ(z=Lz) = θ_top")
     problem.add_equation("Υ(z=z_ref) = 0 ")
 
     # Solver
