@@ -3,7 +3,7 @@ Dedalus script for 2D compressible convection in a polytrope,
 with specified number of density scale heights of stratification.
 
 Usage:
-    FC_Kramers_2D_pert_lambda0.py [options]
+    FC_Kramers_2D_pert.py [options]
 
 Options:
     --Re=<Re>                            Reynolds number [default: 1000]
@@ -13,7 +13,7 @@ Options:
     --gamma=<gamma>                      Gamma of ideal gas (cp/cv) [default: 5/3]
     --aspect=<aspect_ratio>              Physical aspect ratio of the atmosphere [default: 4]
     --aa=<aa>                            Free parameter a for Kramer's opacity [default: 1]
-    --bb=<bb>                            Free parameter b for Kramer's opacity [default: -3.5]
+    --bb=<bb>                            Free parameter b for Kramer's opacity [default: -2]
     --bc_jump=<bc_jump>                  Enthalpy top boundary condition jump [default: -0.05]
 
     --no_slip	                         Use no-slip boundary conditions
@@ -80,7 +80,7 @@ else:
 γ  = float(Fraction(args['--gamma']))
 Re = float(args['--Re'])
 Pr = float(args['--Pr'])
-R_inv = mu = 1./Re #dynamic shear viscosity
+R_inv = scrR = mu = 1./Re #dynamic shear viscosity
 Pr_inv = 1./Pr
 aa = float(args['--aa'])
 bb = float(args['--bb'])
@@ -90,7 +90,10 @@ n_poly = (3-bb)/(aa+1) #Polytropic index from the Kramers free parameters
 m_ad = 1/(γ-1)
 
 cP = γ/(γ-1)
+κ_const = mu*cP/Pr
 Ma2 = float(args['--Ma2'])
+scrM = 1/Ma2
+s_c_over_c_P = scrS = 1 # s_c/c_P = 1
 
 no_slip = args['--no_slip']
 
@@ -145,15 +148,17 @@ d = de.Distributor(c, dtype=np.float64) #Distributor directs parallelization and
 xb = de.RealFourier(c.coords[0], size=nx, bounds=(0, Lx), dealias=dealias) # Define xb on the real Fourier sine/cosine basis
 zb = de.ChebyshevT(c.coords[1], size=nz, bounds=(0, Lz), dealias=dealias) # Define zb basis as a Chebyshev polynomial of the first kind.
 
-b = (xb, zb) # This is the basis on which we will define all fields.
-x = d.local_grid(xb)
-z = d.local_grid(zb)
+b = (xb, zb) # This is the basis on which we will define all fields. 
+x = xb.local_grid(1)
+z = zb.local_grid(1)
 
-# Defining the fields on the bases b. log(h), log(rho), s, and u.
+# Defining the fields on the bases b. log(h), log(rho), s, and u. 
 # Fields
 θ = d.Field(name='θ', bases=b)
 Υ = d.Field(name='Υ', bases=b)
 s = d.Field(name='s', bases=b)
+κ = d.Field(name='κ', bases=b)
+λ = d.Field(name='λ', bases=b)
 u = d.VectorField(c, name='u', bases=b)
 
 # Taus
@@ -189,38 +194,36 @@ e = grad(u) + trans(grad(u))
 e.store_last = True
 
 viscous_terms = div(e) - 2/3*grad(div(u))
+viscous_diffusion = u@e - 2/3*u@grad(u)
 trace_e = trace(e)
 trace_e.store_last = True
 Phi = 0.5*trace(e@e) - 1/3*(trace_e*trace_e)
 
 ############### Trying to bring structure in a parallel run #########################################################
 from structure_kramers import kramers_opacity_polytrope
-structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,  comm=MPI.COMM_SELF)
+structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump, κ_const, verbose=True, comm=MPI.COMM_SELF)
 
-polytrope = structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, 0,  comm=MPI.COMM_SELF)
-
+h0 = d.Field(name='h0', bases=zb)
 θ0 = d.Field(name='θ0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
-#κ0 = d.Field(name='κ0', bases=zb)
+κ0 = d.Field(name='κ0', bases=zb)
+λ0 = d.Field(name='λ0', bases=zb)
 
 for q in structure:
     structure[q].require_coeff_space()
-for q in polytrope:
-    polytrope[q].require_coeff_space()
 
 if s0['c'].size > 0:
-    s0['c'][0,:] = polytrope['s']['c']
-    θ0['c'][0,:] = polytrope['θ']['c']
-    Υ0['c'][0,:] = polytrope['Υ']['c']
-    #κ0['c'][0,:] = structure['κ_poly']['c']
-    s['c'][0,:] = structure['s']['c'] - s0['c']
-    θ['c'][0,:] = structure['θ']['c'] - θ0['c']
-    Υ['c'][0,:] = structure['Υ']['c'] - Υ0['c']
-
-    #s_top = (structure['s'] - s0)(z=Lz).evaluate()['g'][0]
-    #s_top = s(z=Lz).evaluate()['g'][0,0]
-s_top = γ*bc_jump
+    s0['c'][0,:] = structure['s_poly']['c']
+    θ0['c'][0,:] = structure['θ_poly']['c']
+    Υ0['c'][0,:] = structure['Υ_poly']['c']
+    κ0['c'][0,:] = structure['κ_poly']['c']
+    λ0['c'][0,:] = structure['λ_poly']['c']
+    s['c'][0,:] = structure['s']['c'] - structure['s_poly']['c']
+    θ['c'][0,:] = structure['θ']['c'] - structure['θ_poly']['c']
+    Υ['c'][0,:] = structure['Υ']['c'] - structure['Υ_poly']['c']
+    κ['c'][0,:] = structure['κ']['c'] - structure['κ_poly']['c']
+    λ['c'][0,:] = structure['λ']['c'] - structure['λ_poly']['c']
 
 # Calculting rho and other quantities. Mostly playing with this because of the log formulation.
 ρ0 = np.exp(Υ0).evaluate()
@@ -230,10 +233,10 @@ s_top = γ*bc_jump
 h0 = np.exp(θ0).evaluate()
 h0.name = 'h0'
 grad_h0 = grad(h0).evaluate()
-
 grad_θ0 = grad(θ0).evaluate()
 grad_Υ0 = grad(Υ0).evaluate()
 grad_s0 = grad(s0).evaluate()
+grad_λ0 = grad(λ0).evaluate() # grad(ln kappa_0) # Should be zero because its a constant value for a polytrope
 
 h0_g = de.Grid(h0).evaluate()
 h0_inv_g = de.Grid(1/h0).evaluate()
@@ -252,15 +255,15 @@ grad_h0_g = de.Grid(grad(h0)).evaluate()
 if rank ==0:
     logger.info("Δθ = {:.2g} ({:.2g} to {:.2g})".format(θ_bot[0][0]-θ_top[0][0],θ_bot[0][0],θ_top[0][0]))
     logger.info("ΔΥ = {:.2g} ({:.2g} to {:.2g})".format(Υ_bot[0][0]-Υ_top[0][0],Υ_bot[0][0],Υ_top[0][0]))
-
-verbose = True
+    
+verbose = False
 if verbose:
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(nrows=2)
 
 # Putting a threshold (defined by ncc_cutoff) on all the NCC expansions.
 logger.info("NCC expansions:")
-for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0)]:
+for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
     if verbose:
         ncc = ncc.evaluate()
@@ -270,43 +273,48 @@ for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0, ρ0*grad(θ0), h0*grad(
         else:
             i = (0, slice(None))
         ax[0].plot(z[0,:], ncc['g'][i])
-        ax[1].plot(np.abs(ncc['c'][i]), label=ncc.name)
-        ax[1].axhline(y=ncc_cutoff, linestyle='dashed', color='xkcd:dark grey', alpha=0.5)
+        ax[1].plot(z[0,:], np.abs(ncc['g'][i]), label=ncc.name)
 if verbose:
-    ax[1].set_xlabel('Tz')
     ax[1].set_yscale('log')
-    ax[1].legend(loc='center right')
-    fig.savefig('ncc_structure.pdf')
+    ax[1].legend()
+    fig.savefig('structure.pdf')
 
-τ_c = Re*lift(τ_u2,-1)@ez
-τ_u = lift(τ_u1,-1) + lift(τ_u2,-2)
-τ_s = lift(τ_s1,-1) + lift(τ_s2,-2)
+κ = (κ_const*np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)) # full kappa is not constant because of the BC perturbation
+λ = (3-bb)*θ-(1+aa)*Υ
+κ_shape = κ_const*(np.exp(θ)**(3-bb)/(np.exp(Υ))**(1+aa)-1)
+
+# For entropy perturbation boundary condition
+s_top = structure['s_top']['g'][0]
+
 # Υ = ln(ρ), θ = ln(h)
-vars = [u, Υ, θ, s]
-taus = [τ_u1, τ_u2, τ_s1, τ_s2]
-problem = de.IVP(vars+taus)
-problem.add_equation((ρ0*(dt(u)
-                      + 1/Ma2*grad(h0*θ) #(h0*grad(θ) + grad_h0*θ)
-                      - 1/Ma2*h0*grad(s)
-                      - 1/Ma2*h0*grad_s0*θ)
-                      - R_inv*viscous_terms
-                      + τ_u,
-                      - ρ0_g*u@grad(u)
-                      - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-θ)
-                      - 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(θ)
-                      + 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(s)
-                      + 1/Ma2*ρ0_h0_g*grad_s0*(np.expm1(θ)-θ)
+problem = de.IVP([u, Υ, θ, s, τ_u1, τ_u2, τ_s1, τ_s2])
+problem.add_equation((ρ0*(dt(u) + 1/Ma2*(h0*grad(θ) + grad_h0*θ) 
+                      - 1/Ma2*s_c_over_c_P*h0*grad(s) 
+                      - 1/Ma2*h0*grad_s0*θ) 
+                      - R_inv*viscous_terms 
+                      + lift(τ_u1,-1) + lift(τ_u2,-2),
+                      - ρ0_g*u@grad(u) 
+                      - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-θ) 
+                      - 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(θ) 
+                      + 1/Ma2*scrS*ρ0_h0_g*np.expm1(θ)*grad(s)  
+                      + 1/Ma2*scrS*ρ0_h0_g*grad_s0*(np.expm1(θ)-θ) 
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + τ_c,
+problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + Re*lift(τ_u2,-1)@ez,
                       -h0_g*u@grad(Υ) ))
-problem.add_equation((θ - (γ-1)*Υ - γ*s, 0)) #EOS, s_c/cP = scrS
-problem.add_equation((ρ0*(dt(s)
-                      + u@grad(s0))
-                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))
-                      + τ_s,
-                      - ρ0_g*u@grad(s)
-                      + R_inv*Pr_inv*(grad(θ)@grad(θ))
-                      + R_inv*Ma2*h0_inv_g*Phi ))
+problem.add_equation((θ - (γ-1)*Υ - s_c_over_c_P*γ*s, 0)) #EOS, s_c/cP = scrS
+problem.add_equation((ρ0*s_c_over_c_P*dt(s)
+                      - κ_const*R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))
+                      - κ_const*R_inv*Pr_inv*(grad(λ)@grad_θ0) # New
+                      + ρ0*s_c_over_c_P*u@grad(s0)
+                      + lift(τ_s1,-1) + lift(τ_s2,-2),
+                      - ρ0_g*s_c_over_c_P*u@grad(s)
+                      + R_inv*Pr_inv*κ_shape*(lap(θ)+2*grad_θ0@grad(θ))
+                      + R_inv*Pr_inv*κ_shape*grad(λ)@grad_θ0
+                      + R_inv*Pr_inv*κ_shape*(grad(λ)@grad(θ))
+                      + κ_const*R_inv*Pr_inv*(grad(λ)@grad(θ)) # New
+                      + R_inv*Pr_inv*κ_shape*(grad(θ)@grad(θ))
+                      + κ_const*R_inv*Pr_inv*(grad(θ)@grad(θ)) # New
+                      + R_inv*Ma2*h0_inv_g*Phi )) # Change in term here
 
 if no_slip:
     problem.add_equation((u(z=0), 0))
@@ -318,6 +326,13 @@ else:
     problem.add_equation((ez@(ex@e(z=Lz)), 0))
 problem.add_equation((s(z=Lz), s_top))
 problem.add_equation((ez@grad(θ)(z=0), 0))
+
+#Old BC's
+#problem.add_equation((θ(z=0), 0)) #Ideally it should be np.log(h_bot)
+#problem.add_equation((θ(z=Lz), np.log(np.exp(-n_h)+bc_jump)))
+#problem.add_equation((s(z=0), 0))
+#problem.add_equation((θ(z=Lz), 0))
+#problem.add_equation((θ(z=0), 0))
 
 logger.info("Problem built")
 
@@ -332,7 +347,7 @@ noise['g'] *= np.cos(np.pi/2*z/Lz)
 
 s['g'] += noise['g']
 # pressure balanced ICs
-Υ['g'] += -γ/(γ-1)*noise['g']
+Υ['g'] += -scrS*γ/(γ-1)*noise['g']
 θ['g'] += 0.0
 
 if args['--SBDF2']:
@@ -344,7 +359,7 @@ else:
 if args['--safety']:
     cfl_safety_factor = float(args['--safety'])
 
-solver = problem.build_solver(ts, ncc_cutoff=ncc_cutoff)
+solver = problem.build_solver(ts)
 solver.stop_iteration = run_time_iter
 #solver.stop_wall_time = run_time
 
@@ -362,16 +377,21 @@ cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold
                      max_change=1.5, min_change=0.5, max_dt=max_Δt)
 cfl.add_velocity(u)
 
-ρ = ρ0*np.exp(Υ).evaluate()
-h = h0*np.exp(θ).evaluate()
-ρ_fluc = ρ0*(np.exp(Υ)-1).evaluate()
-h_fluc = h0*(np.exp(θ)-1).evaluate()
-KE = 0.5*ρ*u@u
-IE = 1/Ma2*ρ*h
-PE = -1/Ma2*ρ*h*(s+s0)
-Re = ρ0*np.sqrt(u@u)/mu # dissipation term chosen to only feel ρ0
+ρ = ρ0*(np.exp(Υ)-1).evaluate()
+h = h0*(np.exp(θ)-1).evaluate()
+KE = 0.5*ρ0*np.exp(Υ)*u@u
+IE = 1/Ma2*ρ0*np.exp(Υ)*h0*np.exp(θ)
+PE = -1/Ma2*ρ0*np.exp(Υ)*h0*np.exp(θ)*(s+s0)
+#Re = (ρ0*np.exp(Υ)*R)*np.sqrt(u@u)
+Re = (ρ0*np.exp(Υ))*np.sqrt(u@u)/mu
 ω = -div(skew(u))
-N2 = (grad_φ*ez)@grad(s+s0)
+N2 = ((grad_φ*ez)@grad(s+s0))/cP
+KE.store_last = True
+PE.store_last = True
+IE.store_last = True
+Re.store_last = True
+ω.store_last = True
+N2.store_last = True
 
 # Checkpoint save - wall_dt is in seconds
 checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 39096, max_writes = 1)#, virtual_file=True, mode=mode)
@@ -383,35 +403,33 @@ if data_dt != None:
 
 # Adding file handlers for writing data
 # You can add an arbitrary number of file handlers to save different sets of tasks at different cadences and to different files. (Dedalus webpage)
-# Instead of sim_dt, it is possible to use wall_dt and iter too.
-
-viscous_diffusion = u@e - 2/3*u@grad(u)
-
+# Instead of sim_dt, it is possible to use wall_dt and iter too. 
 
 slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=data_dt, max_writes=10, mode=mode)
 slice_output.add_task(s-x_avg(s), name='srem')
-slice_output.add_task(ω, name='omega_y')
 slice_output.add_task(ω**2, name='enstrophy')
 slice_output.add_task(u@ex, name='ux')
 slice_output.add_task(u@ez, name='uz')
 
 # Horizontal averages
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=data_dt, max_writes=10, mode=mode)
-averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
-averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*grad(h+h0)@ez), name='F_κtot(z)') # Without pert eqns, it is h-h0
+averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*κ0*np.exp(λ)*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
+averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*np.exp(λ)*grad(h+h0)@ez), name='F_κtot(z)') # Without pert eqns, it is h-h0
 averages.add_task(x_avg(0.5*(ρ+ρ0)*u@ez*u@u), name='F_KE(z)')
 averages.add_task(x_avg(-R_inv*(viscous_diffusion@ez)),name='F_viscous(z)')
-averages.add_task(x_avg(u@ez*ρ*h/Ma2), name='F_h(z)')
-averages.add_task(x_avg(-u@ez*ρ*h*(s+s0)/Ma2), name='F_PE(z)')
-averages.add_task(x_avg(u@ez*ρ*grad_φ/Ma2), name='F_g(z)')
+averages.add_task(x_avg(u@ez*(ρ+ρ0)*(h+h0)/Ma2), name='F_h(z)')
+averages.add_task(x_avg(-u@ez*(ρ+ρ0)*(h+h0)*(s+s0)/Ma2), name='F_PE(z)')
+averages.add_task(x_avg(u@ez*(ρ+ρ0)*grad_φ/Ma2), name='F_g(z)')
 averages.add_task(x_avg(s), name='s(z)')
 averages.add_task(x_avg(s+s0), name='stot(z)')
-averages.add_task(x_avg(h_fluc), name='h(z)')
-averages.add_task(x_avg(h), name='htot(z)') # same as h0*exp(theta)
+averages.add_task(x_avg(h), name='h(z)')
+averages.add_task(x_avg(h+h0), name='htot(z)') # same as h0*exp(theta)
 averages.add_task(x_avg(θ), name='θ(z)')
 averages.add_task(x_avg(θ+θ0), name='θ_tot(z)')
 averages.add_task(x_avg(Υ), name='Υ(z)')
 averages.add_task(x_avg(Υ+Υ0), name='Υ_tot(z)')
+averages.add_task(x_avg(κ), name='κ(z)')
+averages.add_task(x_avg(κ+κ0), name='κ_tot(z)')
 averages.add_task(x_avg(u@ez), name='uz(z)')
 averages.add_task(x_avg(N2), name='N2(z)')
 averages.add_task(x_avg(np.sqrt(τ_u1@τ_u1)), name='τ_u1')
@@ -419,34 +437,31 @@ averages.add_task(x_avg(np.sqrt(τ_u2@τ_u2)), name='τ_u2')
 averages.add_task(x_avg(np.sqrt(τ_s1**2)), name='τ_s1')
 averages.add_task(x_avg(np.sqrt(τ_s2**2)), name='τ_s2')
 
-Ma_ad2 = Ma2*cP*u@u/(γ*h)
+Ma_ad2 = Ma2*u@u*cP/(γ*(h+h0))
 
-scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=0.1, max_writes=1e6, mode=mode)
-scalars.add_task(avg(KE), name='KE')
-scalars.add_task(avg(PE), name='PE')
-scalars.add_task(avg(IE), name='IE')
-scalars.add_task(avg(Re), name='Re')
-scalars.add_task(avg(N2), name='BV_freq')
-scalars.add_task(avg(ω**2), name='enstrophy')
-scalars.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-scalars.add_task(np.sqrt(avg(τ_c*τ_c)), name='τ_c')
-scalars.add_task(np.sqrt(avg(τ_u@τ_u)), name='τ_u')
-scalars.add_task(np.sqrt(avg(τ_s*τ_s)), name='τ_s')
+traces = solver.evaluator.add_file_handler(data_dir+'/traces', sim_dt=0.1, max_writes=1e6, mode=mode)
+traces.add_task(avg(KE), name='KE')
+traces.add_task(avg(PE), name='PE')
+traces.add_task(avg(IE), name='IE')
+traces.add_task(avg(Re), name='Re')
+traces.add_task(avg(N2), name='BV_freq')
+traces.add_task(avg(ω**2), name='avg_enstrophy')
+traces.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
 
-report_cadence = 100
+report_cadence = 1
+good_solution = True
 
 flow = flow_tools.GlobalFlowProperty(solver, cadence=report_cadence)
 flow.add_property(Re, name='Re')
 flow.add_property(KE, name='KE')
 flow.add_property(IE, name='IE')
 flow.add_property(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-flow.add_property(np.sqrt(τ_c**2), name='|τ_c|')
-flow.add_property(np.sqrt(τ_s**2), name='|τ_s|')
-flow.add_property(np.sqrt(τ_u@τ_u), name='|τ_u|')
-
+flow.add_property(τ_u1, name='τ_u1')
+flow.add_property(τ_u2, name='τ_u2')
+flow.add_property(τ_s1, name='τ_s1')
+flow.add_property(τ_s2, name='τ_s2')
 
 KE_avg = 0
-good_solution = True
 while solver.proceed and good_solution:
     # advance
     solver.step(Δt)
@@ -456,7 +471,11 @@ while solver.proceed and good_solution:
         Ma_ad_avg = flow.grid_average('Ma_ad')
         Re_avg = flow.grid_average('Re')
         Re_max = flow.max('Re')
-        τ_max = np.max([flow.max('|τ_c|'), flow.max('|τ_s|'), flow.max('|τ_u|')])
+        τu1_max = flow.max('τ_u1')
+        τu2_max = flow.max('τ_u2')
+        τs1_max = flow.max('τ_s1')
+        τs2_max = flow.max('τ_s2')
+        τ_max = np.max([τu1_max,τu2_max,τs1_max,τs2_max])
         log_string = 'Iteration: {:5d}, Time: {:8.3e}, dt: {:5.1e}'.format(solver.iteration, solver.sim_time, Δt)
         log_string += ', KE: {:.2g}, Ma: {:.2g}, IE: {:.2g}, Re: {:.2g} ({:.2g})'.format(KE_avg, Ma_ad_avg, IE_avg, Re_avg, Re_max)
         log_string += ', τ: {:.2g}'.format(τ_max)
@@ -472,3 +491,4 @@ if not good_solution:
 
 solver.log_stats()
 logger.debug("mode-stages/DOF = {}".format(solver.total_modes/(nx*nz)))
+
