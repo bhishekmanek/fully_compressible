@@ -161,10 +161,12 @@ zb1 = zb.clone_with(a=zb.a+1, b=zb.b+1)
 zb2 = zb.clone_with(a=zb.a+2, b=zb.b+2)
 lift1 = lambda A, n: de.Lift(A, zb1, n)
 lift = lambda A, n: de.Lift(A, zb2, n)
+τ_c0 = d.Field(name='τ_c0')
+τ_c1 = d.Field(name='τ_c1')
 τ_s1 = d.Field(name='τ_s1', bases=xb)
 τ_s2 = d.Field(name='τ_s2', bases=xb)
-τ_u1 = d.VectorField(c, name='τ_u1', bases=(xb,))
-τ_u2 = d.VectorField(c, name='τ_u2', bases=(xb,))
+τ_u1 = d.VectorField(c, name='τ_u1', bases=xb)
+τ_u2 = d.VectorField(c, name='τ_u2', bases=xb)
 
 # Parameters and operators
 div = lambda A: de.Divergence(A, index=0)
@@ -283,26 +285,32 @@ if verbose and rank==0:
     ax[1].legend(loc='center right')
     fig.savefig('ncc_structure.pdf')
 
-τ_c = Re*lift(τ_u2,-1)@ez
+#τ_c = Re*lift(τ_u2,-1)@ez
+#τ_c = lift1(τ_c1,-1) + τ_c0
+#τ_c = lift1(τ_c1,-1)
+τ_c = d.Field(name='τ_c', bases=b)
 τ_u = lift(τ_u1,-1) + lift(τ_u2,-2)
 τ_s = lift(τ_s1,-1) + lift(τ_s2,-2)
 # Υ = ln(ρ), θ = ln(h)
 vars = [u, Υ, θ, s]
+#taus = [τ_u1, τ_u2, τ_c0, τ_c1, τ_s1, τ_s2]
+#taus = [τ_u1, τ_u2, τ_c1, τ_s1, τ_s2]
 taus = [τ_u1, τ_u2, τ_s1, τ_s2]
 problem = de.IVP(vars+taus)
 problem.add_equation((ρ0*(dt(u)
                       + 1/Ma2*grad(h0*θ) #(h0*grad(θ) + grad_h0*θ)
                       - 1/Ma2*h0*grad(s)
-                      - 1/Ma2*h0*grad_s0*θ)
+                      - 1/Ma2*h0*grad(s0)*θ)
                       - R_inv*viscous_terms
                       + τ_u,
                       - ρ0_g*u@grad(u)
-                      - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-θ)
-                      - 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(θ)
+                      # - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-θ)
+                      # - 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(θ)
+                      - 1/Ma2*ρ0_g*grad(h0*(np.expm1(θ)-θ))
                       + 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(s)
-                      + 1/Ma2*ρ0_h0_g*grad_s0*(np.expm1(θ)-θ)
+                      + 1/Ma2*ρ0_h0_g*grad(s0)*(np.expm1(θ)-θ)
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + τ_c,
+problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0), #+ τ_c,
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((θ - (γ-1)*Υ - γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*(dt(s)
