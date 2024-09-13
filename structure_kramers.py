@@ -78,7 +78,6 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
     θ = dist.Field(name='θ', bases=bases)
     Υ = dist.Field(name='Υ', bases=bases)
     s = dist.Field(name='s', bases=bases)
-    κ = dist.Field(name='κ', bases=bases)
 
     # Taus
     lift_basis2 = zb.derivative_basis(2)
@@ -122,6 +121,10 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
         pert_norm = sum(pert.allreduce_data_norm('c', 2) for pert in solver.perturbations)
         logger.info('current perturbation norm = {:.3g}'.format(pert_norm))
 
+    lnκ = ((3-bb)*θ - (1+aa)*Υ).evaluate()
+    lnκ.name='lnκ'
+    structure['lnκ']=lnκ
+
     for key in structure:
         structure[key].change_scales(1)
 
@@ -146,7 +149,7 @@ def plot_structure(structure, polytrope, aa, bb, dealias=dealias, label=None):
     h_poly = np.exp(θ_poly).evaluate()
     ρ_poly = np.exp(Υ_poly).evaluate()
 
-    lnκ = (3-bb)*θ - (1+aa)*Υ
+    lnκ = structure['lnκ']
     κ = np.exp(lnκ).evaluate()
 
     lnκ_poly = (3-bb)*θ_poly - (1+aa)*Υ_poly

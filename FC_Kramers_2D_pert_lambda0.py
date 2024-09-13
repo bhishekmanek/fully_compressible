@@ -186,23 +186,21 @@ ex, ez = c.unit_vector_fields(d)
 
 # stress-free bcs
 e = grad(u) + trans(grad(u))
-e.store_last = True
 
 viscous_terms = div(e) - 2/3*grad(div(u))
 trace_e = trace(e)
-trace_e.store_last = True
 Phi = 0.5*trace(e@e) - 1/3*(trace_e*trace_e)
 
 ############### Trying to bring structure in a parallel run #########################################################
 from structure_kramers import kramers_opacity_polytrope
 structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,  comm=MPI.COMM_SELF)
 
-polytrope = structure = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, 0,  comm=MPI.COMM_SELF)
+polytrope = kramers_opacity_polytrope(nz, γ, n_h, aa, bb, 0,  comm=MPI.COMM_SELF)
 
 θ0 = d.Field(name='θ0', bases=zb)
 Υ0 = d.Field(name='Υ0', bases=zb)
 s0 = d.Field(name='s0', bases=zb)
-#κ0 = d.Field(name='κ0', bases=zb)
+lnκ0 = d.Field(name='lnκ', bases=zb)
 
 for q in structure:
     structure[q].require_coeff_space()
@@ -213,14 +211,20 @@ if s0['c'].size > 0:
     s0['c'][0,:] = polytrope['s']['c']
     θ0['c'][0,:] = polytrope['θ']['c']
     Υ0['c'][0,:] = polytrope['Υ']['c']
-    #κ0['c'][0,:] = structure['κ_poly']['c']
+
     s['c'][0,:] = structure['s']['c'] - s0['c']
     θ['c'][0,:] = structure['θ']['c'] - θ0['c']
     Υ['c'][0,:] = structure['Υ']['c'] - Υ0['c']
 
+    lnκ0['c'][0,:] = structure['lnκ']['c']
+
     #s_top = (structure['s'] - s0)(z=Lz).evaluate()['g'][0]
     #s_top = s(z=Lz).evaluate()['g'][0,0]
 s_top = γ*bc_jump
+
+# fixed in time diffusion coeff, shaped like initial thermal eq kappa
+κ0 = np.exp(lnκ0).evaluate()
+κ0.name='κ0'
 
 # Calculting rho and other quantities. Mostly playing with this because of the log formulation.
 ρ0 = np.exp(Υ0).evaluate()
@@ -253,16 +257,17 @@ if rank ==0:
     logger.info("Δθ = {:.2g} ({:.2g} to {:.2g})".format(θ_bot[0][0]-θ_top[0][0],θ_bot[0][0],θ_top[0][0]))
     logger.info("ΔΥ = {:.2g} ({:.2g} to {:.2g})".format(Υ_bot[0][0]-Υ_top[0][0],Υ_bot[0][0],Υ_top[0][0]))
 
-verbose = True
-if verbose:
+verbose = False
+if verbose and rank==0:
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(nrows=2)
 
 # Putting a threshold (defined by ncc_cutoff) on all the NCC expansions.
 logger.info("NCC expansions:")
-for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0)]:
+for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0),
+            R_inv*Pr_inv*κ0, R_inv*Pr_inv*κ0*grad(lnκ0), R_inv*Pr_inv*κ0*grad(θ0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
-    if verbose:
+    if verbose and rank==0:
         ncc = ncc.evaluate()
         ncc.change_scales(1)
         if ncc['g'].ndim == 3:
@@ -272,7 +277,7 @@ for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0, ρ0*grad(θ0), h0*grad(
         ax[0].plot(z[0,:], ncc['g'][i])
         ax[1].plot(np.abs(ncc['c'][i]), label=ncc.name)
         ax[1].axhline(y=ncc_cutoff, linestyle='dashed', color='xkcd:dark grey', alpha=0.5)
-if verbose:
+if verbose and rank==0:
     ax[1].set_xlabel('Tz')
     ax[1].set_yscale('log')
     ax[1].legend(loc='center right')
@@ -302,10 +307,13 @@ problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + τ_c,
 problem.add_equation((θ - (γ-1)*Υ - γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*(dt(s)
                       + u@grad(s0))
-                      - R_inv*Pr_inv*(lap(θ)+2*grad_θ0@grad(θ))
+                      - R_inv*Pr_inv*κ0*(lap(θ)+2*grad(θ0)@grad(θ))
+                      - R_inv*Pr_inv*κ0*(grad(lnκ0)@grad(θ))
                       + τ_s,
                       - ρ0_g*u@grad(s)
-                      + R_inv*Pr_inv*(grad(θ)@grad(θ))
+                      + R_inv*Pr_inv*κ0*(grad(θ)@grad(θ))
+                      + R_inv*Pr_inv*κ0*(grad(θ0)@grad(θ0)) # forcing from eq solution
+                      + R_inv*Pr_inv*κ0*(lap(θ0)) # forcing from eq solution
                       + R_inv*Ma2*h0_inv_g*Phi ))
 
 if no_slip:
@@ -337,7 +345,7 @@ s['g'] += noise['g']
 
 if args['--SBDF2']:
     ts = de.SBDF2
-    cfl_safety_factor = 0.2
+    cfl_safety_factor = 0.1
 else:
     ts = de.RK443
     cfl_safety_factor = 0.4
@@ -387,8 +395,8 @@ if data_dt != None:
 
 viscous_diffusion = u@e - 2/3*u@grad(u)
 
-
-slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=data_dt, max_writes=10, mode=mode)
+slice_dt = data_dt*5
+slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=slice_dt, max_writes=10, mode=mode)
 slice_output.add_task(s-x_avg(s), name='srem')
 slice_output.add_task(ω, name='omega_y')
 slice_output.add_task(ω**2, name='enstrophy')
@@ -396,7 +404,7 @@ slice_output.add_task(u@ex, name='ux')
 slice_output.add_task(u@ez, name='uz')
 
 # Horizontal averages
-averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=data_dt, max_writes=10, mode=mode)
+averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=slice_dt, max_writes=None, mode=mode)
 averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
 averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*grad(h+h0)@ez), name='F_κtot(z)') # Without pert eqns, it is h-h0
 averages.add_task(x_avg(0.5*(ρ+ρ0)*u@ez*u@u), name='F_KE(z)')
@@ -421,7 +429,7 @@ averages.add_task(x_avg(np.sqrt(τ_s2**2)), name='τ_s2')
 
 Ma_ad2 = Ma2*cP*u@u/(γ*h)
 
-scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=0.1, max_writes=1e6, mode=mode)
+scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=data_dt, max_writes=None, mode=mode)
 scalars.add_task(avg(KE), name='KE')
 scalars.add_task(avg(PE), name='PE')
 scalars.add_task(avg(IE), name='IE')
@@ -468,7 +476,7 @@ if not good_solution:
     logger.info("simulation terminated with good_solution = {}".format(good_solution))
     logger.info("Δt = {}".format(Δt))
     logger.info("KE = {}".format(KE_avg))
-    logger.info("τu = {}".format((τu1_max,τu2_max,τs1_max,τs2_max)))
+    logger.info("τu = {}".format(τ_max))
 
 solver.log_stats()
 logger.debug("mode-stages/DOF = {}".format(solver.total_modes/(nx*nz)))
