@@ -107,7 +107,7 @@ def kramers_opacity_polytrope(nz, γ, n_h, aa, bb, bc_jump,
     if Kramers:
         problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@((4-bb)*grad(θ)-(1+aa)*grad(Υ))")
     else:
-        problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@*grad(θ)")
+        problem.add_equation("lap(θ) + lift2(τ_s1,-1) + lift2(τ_s2,-2) = -grad(θ)@grad(θ)")
     problem.add_equation("θ - (γ-1)*Υ - γ*s  = 0")
     problem.add_equation("θ(z=0)  = θ_bot")
     problem.add_equation("θ(z=Lz) = θ_top")
