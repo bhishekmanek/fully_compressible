@@ -47,6 +47,22 @@ if args['--times']:
 else:
     subrange = False
 
+fig, axs = plt.subplots(nrows=2)
+axs[0].plot(t, data['Re'], label='Re')
+ax_M = axs[0].twinx()
+ax_M.plot(t, data['Ma_ad'], label='Ma')
+axs[1].plot(t, data['Re'], label='Re')
+axs[1].set_yscale('log')
+for ax in axs:
+    if subrange:
+        ax.set_xlim(t_min,t_max)
+    ax.set_xlabel('time')
+    ax.set_ylabel('Re')
+    ax.legend(loc='lower left')
+ax_M.set_ylabel('Ma')
+ax_M.legend(loc='lower right')
+fig.savefig('{:s}/Re.pdf'.format(str(output_path)))
+
 energy_keys = ['KE','IE','PE']
 
 fig_E, ax_E = plt.subplots(nrows=2)
@@ -84,10 +100,9 @@ fig_E.savefig('{:s}/energies_fluctuating.pdf'.format(str(output_path)))
 
 fig_tau, ax_tau = plt.subplots(nrows=2)
 for i in [0,1]:
-    ax_tau[i].plot(t, data['τ_u1'], label=r'$\tau_{u1}$')
-    ax_tau[i].plot(t, data['τ_u2'], label=r'$\tau_{u2}$')
-    ax_tau[i].plot(t, data['τ_s1'], label=r'$\tau_{s1}$')
-    ax_tau[i].plot(t, data['τ_s2'], label=r'$\tau_{s2}$')
+    ax_tau[i].plot(t, data['τ_c'], label=r'$\tau_{c}$')
+    ax_tau[i].plot(t, data['τ_u'], label=r'$\tau_{u}$')
+    ax_tau[i].plot(t, data['τ_s'], label=r'$\tau_{s}$')
 
 for ax in ax_tau:
     if subrange:
@@ -98,7 +113,7 @@ for ax in ax_tau:
 ax_tau[1].set_yscale('log')
 fig_tau.savefig('{:s}/tau_error.pdf'.format(str(output_path)))
 
-benchmark_set = ['KE', 'IE', 'Re']
+benchmark_set = ['KE', 'IE', 'Re', 'Ma_ad']
 i_ten = int(0.9*data[benchmark_set[0]].shape[0])
 for benchmark in benchmark_set:
     print("{:s} = {:14.12g} +- {:4.2g} (averaged from {:g}-{:g})".format(benchmark, np.mean(data[benchmark][i_ten:]), np.std(data[benchmark][i_ten:]), t[i_ten], t[-1]))
