@@ -168,8 +168,11 @@ trans = lambda A: de.TransposeComponents(A)
 dt = lambda A: de.TimeDerivative(A)
 
 integ = lambda A: de.Integrate(de.Integrate(A, 'x'), 'z')
+integ_x = lambda A: de.Integrate(A, 'x')
+integ_z = lambda A: de.Integrate(A, 'z')
 avg = lambda A: integ(A)/(Lx*Lz)
 x_avg = lambda A: de.Integrate(A, 'x')/(Lx)
+z_avg = lambda A: de.Integrate(A, 'z')/(Lz)
 
 from dedalus.core.operators import Skew
 skew = lambda A: Skew(A)
@@ -264,17 +267,12 @@ if verbose and rank==0:
     ax[1].legend(loc='center right')
     fig.savefig('ncc_structure.pdf')
 
-#τ_c = Re*lift(τ_u2,-1)@ez
-#τ_c = lift1(τ_c1,-1) + τ_c0
-#τ_c = lift1(τ_c1,-1)
-τ_c = d.Field(name='τ_c', bases=b)
+τ_c = lift1(τ_c1,-1) #+ τ_c0
 τ_u = lift(τ_u1,-1) + lift(τ_u2,-2)
 τ_s = lift(τ_s1,-1) + lift(τ_s2,-2)
 # Υ = ln(ρ), θ = ln(h)
 vars = [u, Υ, θ, s]
-#taus = [τ_u1, τ_u2, τ_c0, τ_c1, τ_s1, τ_s2]
-#taus = [τ_u1, τ_u2, τ_c1, τ_s1, τ_s2]
-taus = [τ_u1, τ_u2, τ_s1, τ_s2]
+taus = [τ_u1, τ_u2, τ_c1, τ_s1, τ_s2]
 problem = de.IVP(vars+taus)
 problem.add_equation((ρ0*(dt(u)
                       + 1/Ma2*grad(h0*θ) #(h0*grad(θ) + grad_h0*θ)
@@ -289,7 +287,7 @@ problem.add_equation((ρ0*(dt(u)
                       + 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(s)
                       + 1/Ma2*ρ0_h0_g*grad(s0)*(np.expm1(θ)-θ)
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0), #+ τ_c,
+problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + τ_c,
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((θ - (γ-1)*Υ - γ*s, 0)) #EOS, s_c/cP = scrS
 problem.add_equation((ρ0*(dt(s)
@@ -309,6 +307,7 @@ else:
     problem.add_equation((ez@(ex@e(z=0)), 0))
     problem.add_equation((ez@u(z=Lz), 0))
     problem.add_equation((ez@(ex@e(z=Lz)), 0))
+    problem.add_equation((integ_x(ez@τ_u2), 0))
 problem.add_equation((s(z=Lz), 0))
 problem.add_equation((ez@grad(θ)(z=0), 0))
 
@@ -424,7 +423,7 @@ scalars.add_task(avg(Re), name='Re')
 scalars.add_task(avg(N2), name='BV_freq')
 scalars.add_task(avg(ω**2), name='enstrophy')
 scalars.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-scalars.add_task(np.sqrt(avg(τ_c*τ_c)), name='τ_c')
+scalars.add_task(np.sqrt(z_avg(τ_c*τ_c)), name='τ_c')
 scalars.add_task(np.sqrt(avg(τ_u@τ_u)), name='τ_u')
 scalars.add_task(np.sqrt(avg(τ_s*τ_s)), name='τ_s')
 
