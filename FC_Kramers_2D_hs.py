@@ -285,8 +285,8 @@ problem.add_equation((ρ0*(dt(u)
                       - ρ0_g*u@grad(u)
                       + 1/Ma2*ρ0_g*h1*grad(s1)
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0 + τ_c),
-                      -h0_g*u@grad(Υ) ))
+problem.add_equation((dt(Υ) + div(u) + u@grad_Υ0 + τ_c,
+                      -u@grad(Υ) ))
 problem.add_equation((h0*((γ-1)*Υ + γ*s1)-h1, h0_g*np.log(h1*h0_inv_g+1)-h1)) #EOS, s_c/cP = scrS
 problem.add_equation((h0*ρ0*(dt(s1)
                       + u@grad(s0))
@@ -294,8 +294,8 @@ problem.add_equation((h0*ρ0*(dt(s1)
                       - R_inv*Pr_inv*κ0*lap(h1)
                       - R_inv*Pr_inv*κ0*grad(lnκ0)@grad(h1)
                       + τ_s,
-                      - ρ0_h0_g*u@grad(s1) ))
-#                      + R_inv*Ma2*Phi ))
+                      - ρ0_h0_g*u@grad(s1)
+                      + R_inv*Ma2*Phi ))
 
 if no_slip:
     problem.add_equation((u(z=0), 0))
