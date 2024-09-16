@@ -5,7 +5,7 @@ Usage:
     plot_averages.py <file> [options]
 
 Options:
-    --times=<times>      Range of times to plot over; pass as a comma separated list with t_min,t_max.  Default is whole timespan.
+    --times=<times>      Range of times to plot over; pass as a comma separated list with t_min,t_max.  Default is last 10% of timespan.
 
     --output=<output>    Output directory; if blank a guess based on likely case name will be made
 """
@@ -37,8 +37,6 @@ else:
     data_dir = case +'/'
     output_path = pathlib.Path(data_dir).absolute()
 
-fields = ['s(z)', 'F_h(z)', 'F_κ(z)', 'F_KE(z)', 'F_PE(z)', 'Q_source(z)']
-
 data = {}
 z = None
 times = None
@@ -65,14 +63,20 @@ if args['--times']:
     t_min, t_max = args['--times'].split(',')
     t_min = float(t_min)
     t_max = float(t_max)
-    print("plotting over range {:g}--{:g}, data range {:g}--{:g}".format(t_min, t_max, min(times), max(times)))
 
-    i_t_min = np.argmin(np.abs(times-t_min))
-    i_t_max = np.argmin(np.abs(times-t_max))
+else:
+    # choose last 10%
+    t_max = np.max(times)
+    t_min = 0.9*t_max
 
-    times = times[i_t_min:i_t_max]
-    for task in data:
-        data[task] = data[task][i_t_min:i_t_max,:]
+print("plotting over range {:g}--{:g}, data range {:g}--{:g}".format(t_min, t_max, min(times), max(times)))
+
+i_t_min = np.argmin(np.abs(times-t_min))
+i_t_max = np.argmin(np.abs(times-t_max))
+
+times = times[i_t_min:i_t_max]
+for task in data:
+    data[task] = data[task][i_t_min:i_t_max,:]
 print(times.shape)
 
 
@@ -81,14 +85,14 @@ def time_avg(f, axis=0):
     n_avg = f.shape[axis]
     return np.squeeze(np.sum(f, axis=axis))/n_avg
 
-s_avg = time_avg(data['stot(z)'])
-fig_s, ax_s = plt.subplots(figsize=(4.5,4/1.5))
-fig_s.subplots_adjust(top=0.9, right=0.95, bottom=0.2, left=0.15)
-for si in data['stot(z)']:
-    ax_s.plot(z, si, alpha=0.3)
-ax_s.plot(z, s_avg, linewidth=2, color='black')
-fig_s.savefig(f'{str(output_path)}/thermaF_profile.pdf')
-fig_s.savefig(f'{str(output_path)}/thermaF_profile.png')
+s_avg = time_avg(data['s(z)'])
+fig, ax = plt.subplots(figsize=(4.5,4/1.5))
+fig.subplots_adjust(top=0.9, right=0.95, bottom=0.2, left=0.15)
+for si in data['s(z)']:
+    ax.plot(z, si, alpha=0.3)
+ax.plot(z, s_avg, linewidth=2, color='black')
+fig.savefig(f'{str(output_path)}/thermal_profile.pdf')
+fig.savefig(f'{str(output_path)}/thermal_profile.png')
 
 F_h = time_avg(data['F_h(z)'])
 F_κ = time_avg(data['F_κ(z)'])
