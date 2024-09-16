@@ -87,7 +87,8 @@ fig_s.subplots_adjust(top=0.9, right=0.95, bottom=0.2, left=0.15)
 for si in data['stot(z)']:
     ax_s.plot(z, si, alpha=0.3)
 ax_s.plot(z, s_avg, linewidth=2, color='black')
-fig_s.savefig('{:s}/thermal_profile.pdf'.format(str(output_path)))
+fig_s.savefig(f'{str(output_path)}/thermaF_profile.pdf')
+fig_s.savefig(f'{str(output_path)}/thermaF_profile.png')
 
 F_h = time_avg(data['F_h(z)'])
 F_κ = time_avg(data['F_κ(z)'])
@@ -97,21 +98,24 @@ F_PE = time_avg(data['F_PE(z)'])
 
 norm = 1 #1/F_κ[-1]
 
-L_h = F_h*norm
-L_κ = F_κ*norm
-L_KE = F_KE*norm
-L_PE = F_PE*norm
+F_h = F_h*norm
+F_κ = F_κ*norm
+F_KE = F_KE*norm
+F_PE = F_PE*norm
+#F_tot = F_h + F_KE + F_PE + F_κ
+F_tot = F_h + F_KE + F_κ
 
 fig_hr, ax_hr = plt.subplots(figsize=(4.5,4/1.5))
 fig_hr.subplots_adjust(top=0.9, right=0.95, bottom=0.2, left=0.15)
-#ax_hr.plot(z, L_h + L_KE + L_PE + L_κ, color='black', label=r'$L_\mathrm{tot}$', linewidth=3)
-#ax_hr.plot(z, L_h, label=r'$L_\mathrm{h}$')
-#ax_hr.plot(z, L_KE, label=r'$L_\mathrm{KE}$')
-#ax_hr.plot(z, L_PE, label=r'$L_\mathrm{PE}$')
-ax_hr.plot(z, L_κ, label=r'$L_\kappa$')
+ax_hr.plot(z, F_tot, color='black', label=r'$F_\mathrm{tot}$', linewidth=3)
+ax_hr.plot(z, F_h, label=r'$F_\mathrm{h}$')
+ax_hr.plot(z, F_KE, label=r'$F_\mathrm{KE}$')
+#ax_hr.plot(z, F_PE, label=r'$F_\mathrm{PE}$')
+ax_hr.plot(z, F_κ, label=r'$F_\kappa$')
 #ax_hr.axhline(y=0, linestyle='dashed', color='darkgrey', zorder=0)
-#ax_hr.plot(r, L_μ, label=r'$L_\mu$')
+#ax_hr.plot(r, F_μ, label=r'$F_\mu$')
 ax_hr.legend()
 ax_hr.set_ylabel(r'$L$')
 ax_hr.set_xlabel(r'$z$')
-fig_hr.savefig('{:s}/flux_balance.pdf'.format(str(output_path)))
+fig_hr.savefig(f'{str(output_path)}/flux_balance.pdf')
+fig_hr.savefig(f'{str(output_path)}/flux_balance.png', dpi=300)

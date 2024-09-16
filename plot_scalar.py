@@ -47,71 +47,77 @@ if args['--times']:
 else:
     subrange = False
 
-fig, axs = plt.subplots(nrows=2)
-axs[0].plot(t, data['Re'], label='Re')
-ax_M = axs[0].twinx()
-ax_M.plot(t, data['Ma_ad'], label='Ma')
-axs[1].plot(t, data['Re'], label='Re')
-axs[1].set_yscale('log')
-for ax in axs:
+fig, ax = plt.subplots(nrows=2, sharex=True)
+ax[0].plot(t, data['Re'], label='Re')
+ax_M = ax[0].twinx()
+ax_M.plot(t, data['Ma_ad'], label='Ma', color='tab:orange')
+ax[1].plot(t, data['Re'], label='Re')
+ax[1].set_yscale('log')
+for axi in ax:
     if subrange:
-        ax.set_xlim(t_min,t_max)
-    ax.set_xlabel('time')
-    ax.set_ylabel('Re')
-    ax.legend(loc='lower left')
+        axi.set_xlim(t_min,t_max)
+    axi.set_xlabel('time')
+    axi.set_ylabel('Re')
+    axi.legend(loc='lower left')
 ax_M.set_ylabel('Ma')
 ax_M.legend(loc='lower right')
-fig.savefig('{:s}/Re.pdf'.format(str(output_path)))
+fig.tight_layout()
+fig.savefig(f'{str(output_path)}/Re.pdf')
+fig.savefig(f'{str(output_path)}/Re.png', dpi=300)
 
 energy_keys = ['KE','IE','PE']
 
-fig_E, ax_E = plt.subplots(nrows=2)
+fig, ax = plt.subplots(nrows=2, sharex=True)
 for key in energy_keys:
-    ax_E[0].plot(t, data[key], label=key)
-ax_E[1].plot(t, data['KE'], label='KE')
-ax2 = ax_E[1].twinx()
+    ax[0].plot(t, data[key], label=key)
+ax[1].plot(t, data['KE'], label='KE')
+ax2 = ax[1].twinx()
 ax2.plot(t, data['Re'], label='Re', linestyle='dotted')
 ax2.legend(loc='upper left')
 
-for ax in ax_E:
+for axi in ax:
     if subrange:
-        ax.set_xlim(t_min,t_max)
-    ax.set_xlabel('time')
-    ax.set_ylabel('energy density')
-    ax.legend(loc='lower left')
-fig_E.savefig('{:s}/energies.pdf'.format(str(output_path)))
-for ax in ax_E:
-    ax.set_yscale('log')
-fig_E.savefig('{:s}/log_energies.pdf'.format(str(output_path)))
+        axi.set_xlim(t_min,t_max)
+    axi.set_xlabel('time')
+    axi.set_ylabel('energy density')
+    axi.legend(loc='lower left')
+fig.savefig(f'{str(output_path)}/energies.pdf')
+fig.savefig(f'{str(output_path)}/energies.png', dpi=300)
+for axi in ax:
+    axi.set_yscale('log')
+fig.savefig(f'{str(output_path)}/log_energies.pdf')
+fig.savefig(f'{str(output_path)}/log_energies.png', dpi=300)
 
-fig_E, ax_E = plt.subplots(nrows=2)
+fig, ax = plt.subplots(nrows=2, sharex=True)
 for key in energy_keys:
-    ax_E[0].plot(t, data[key]-data[key][0], label=key+"'")
-ax_E[1].plot(t, data['KE'], label='KE')
+    ax[0].plot(t, data[key]-data[key][0], label=key+"'")
+ax[1].plot(t, data['KE'], label='KE')
 
-for ax in ax_E:
+for axi in ax:
     if subrange:
-        ax.set_xlim(t_min,t_max)
-    ax.set_xlabel('time')
-    ax.set_ylabel('energy density')
-    ax.legend(loc='lower left')
-fig_E.savefig('{:s}/energies_fluctuating.pdf'.format(str(output_path)))
+        axi.set_xlim(t_min,t_max)
+    axi.set_xlabel('time')
+    axi.set_ylabel('energy density')
+    axi.legend(loc='lower left')
+fig.savefig(f'{str(output_path)}/energies_fluctuating.pdf')
+fig.savefig(f'{str(output_path)}/energies_fluctuating.png', dpi=300)
 
 
-fig_tau, ax_tau = plt.subplots(nrows=2)
+fig, ax = plt.subplots(nrows=2, sharex=True)
 for i in [0,1]:
-    ax_tau[i].plot(t, data['τ_c'], label=r'$\tau_{c}$')
-    ax_tau[i].plot(t, data['τ_u'], label=r'$\tau_{u}$')
-    ax_tau[i].plot(t, data['τ_s'], label=r'$\tau_{s}$')
+    ax[i].plot(t, data['τ_c'], label=r'$\tau_{c}$')
+    ax[i].plot(t, data['τ_u'], label=r'$\tau_{u}$')
+    ax[i].plot(t, data['τ_s'], label=r'$\tau_{s}$')
 
-for ax in ax_tau:
+for axi in ax:
     if subrange:
-        ax.set_xlim(t_min,t_max)
-    ax.set_xlabel('time')
-    ax.set_ylabel(r'$L_\inf(\tau)$')
-    ax.legend(loc='lower left')
-ax_tau[1].set_yscale('log')
-fig_tau.savefig('{:s}/tau_error.pdf'.format(str(output_path)))
+        axi.set_xlim(t_min,t_max)
+    axi.set_xlabel('time')
+    axi.set_ylabel(r'$L_\inf(\tau)$')
+    axi.legend(loc='lower left')
+ax[1].set_yscale('log')
+fig.savefig(f'{str(output_path)}/tau_error.pdf')
+fig.savefig(f'{str(output_path)}/tau_error.png', dpi=300)
 
 benchmark_set = ['KE', 'IE', 'Re', 'Ma_ad']
 i_ten = int(0.9*data[benchmark_set[0]].shape[0])
