@@ -141,9 +141,9 @@ z = d.local_grid(zb)
 
 # Defining the fields on the bases b. log(h), log(rho), s, and u.
 # Fields
-θ = d.Field(name='θ', bases=b)
-Υ = d.Field(name='Υ', bases=b)
-s = d.Field(name='s', bases=b)
+θ1 = d.Field(name='θ', bases=b)
+Υ1 = d.Field(name='Υ', bases=b)
+s1 = d.Field(name='s', bases=b)
 u = d.VectorField(c, name='u', bases=b)
 
 # Taus
@@ -271,32 +271,30 @@ if verbose and rank==0:
 τ_u = lift(τ_u1,-1) + lift(τ_u2,-2)
 τ_s = lift(τ_s1,-1) + lift(τ_s2,-2)
 # Υ = ln(ρ), θ = ln(h)
-vars = [u, Υ, θ, s]
+vars = [u, Υ1, θ1, s1]
 taus = [τ_u1, τ_u2, τ_c1, τ_s1, τ_s2]
 problem = de.IVP(vars+taus)
 problem.add_equation((ρ0*(dt(u)
-                      + 1/Ma2*grad(h0*θ) #(h0*grad(θ) + grad_h0*θ)
-                      - 1/Ma2*h0*grad(s)
-                      - 1/Ma2*h0*grad(s0)*θ)
+                      + 1/Ma2*grad(h0*θ1)
+                      - 1/Ma2*h0*grad(s1)
+                      - 1/Ma2*h0*grad(s0)*θ1)
                       - R_inv*viscous_terms
                       + τ_u,
                       - ρ0_g*u@grad(u)
-                      # - 1/Ma2*ρ0_grad_h0_g*(np.expm1(θ)-θ)
-                      # - 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(θ)
-                      - 1/Ma2*ρ0_g*grad(h0*(np.expm1(θ)-θ))
-                      + 1/Ma2*ρ0_h0_g*np.expm1(θ)*grad(s)
-                      + 1/Ma2*ρ0_h0_g*grad(s0)*(np.expm1(θ)-θ)
+                      - 1/Ma2*ρ0_g*grad(h0*(np.expm1(θ1)-θ1))
+                      + 1/Ma2*ρ0_h0_g*np.expm1(θ1)*grad(s1)
+                      + 1/Ma2*ρ0_h0_g*grad(s0)*(np.expm1(θ1)-θ1)
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + τ_c,
-                      -h0_g*u@grad(Υ) ))
-problem.add_equation((θ - (γ-1)*Υ - γ*s, 0)) #EOS, s_c/cP = scrS
-problem.add_equation((ρ0*(dt(s)
+problem.add_equation((dt(Υ1) + div(u) + u@grad_Υ0 + τ_c,
+                      -u@grad(Υ1) ))
+problem.add_equation((θ1 - (γ-1)*Υ1 - γ*s1, 0)) #EOS, s_c/cP = scrS
+problem.add_equation((ρ0*(dt(s1)
                       + u@grad(s0))
-                      - R_inv*Pr_inv*κ0*(lap(θ)+2*grad(θ0)@grad(θ))
-                      - R_inv*Pr_inv*κ0*(grad(lnκ0)@grad(θ))
+                      - R_inv*Pr_inv*κ0*(lap(θ1)+2*grad(θ0)@grad(θ1))
+                      - R_inv*Pr_inv*κ0*(grad(lnκ0)@grad(θ1))
                       + τ_s,
-                      - ρ0_g*u@grad(s)
-                      + R_inv*Pr_inv*κ0*(grad(θ)@grad(θ))
+                      - ρ0_g*u@grad(s1)
+                      + R_inv*Pr_inv*κ0*(grad(θ1)@grad(θ1))
                       + R_inv*Ma2*h0_inv_g*Phi ))
 
 if no_slip:
@@ -307,9 +305,9 @@ else:
     problem.add_equation((ez@(ex@e(z=0)), 0))
     problem.add_equation((ez@u(z=Lz), 0))
     problem.add_equation((ez@(ex@e(z=Lz)), 0))
-    problem.add_equation((integ_x(ez@τ_u2), 0))
-problem.add_equation((s(z=Lz), 0))
-problem.add_equation((ez@grad(θ)(z=0), 0))
+problem.add_equation((integ_x(ez@τ_u2), 0))
+problem.add_equation((s1(z=Lz), 0))
+problem.add_equation((ez@grad(θ1)(z=0), 0))
 
 logger.info("Problem built")
 
@@ -322,10 +320,10 @@ noise.fill_random('g', seed=42, distribution='normal', scale=amp) # Random noise
 noise.low_pass_filter(scales=0.25)
 noise['g'] *= np.cos(np.pi/2*z/Lz)
 
-s['g'] += noise['g']
+s1['g'] += noise['g']
 # pressure balanced ICs
-Υ['g'] += -γ/(γ-1)*noise['g']
-θ['g'] += 0.0
+Υ1['g'] += -γ/(γ-1)*noise['g']
+θ1['g'] += 0.0
 
 if args['--SBDF2']:
     ts = de.SBDF2
@@ -354,19 +352,25 @@ cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold
                      max_change=1.5, min_change=0.5, max_dt=max_Δt)
 cfl.add_velocity(u)
 
-ρ = ρ0*np.exp(Υ).evaluate()
-h = h0*np.exp(θ).evaluate()
-ρ_fluc = ρ0*(np.exp(Υ)-1).evaluate()
-h_fluc = h0*(np.exp(θ)-1).evaluate()
+ρ = ρ0*np.exp(Υ1)
+h = h0*np.exp(θ1)
+h1 = h - h0
+s = s1+s0
+θ = θ1+θ0
+Υ = Υ1+Υ0
+ρ_fluc = ρ-x_avg(ρ)
+h_fluc = h-x_avg(h)
+s_fluc = s-x_avg(s)
 KE = 0.5*ρ*u@u
 IE = 1/Ma2*ρ*h
 PE = -1/Ma2*ρ*h*(s+s0)
 Re = np.sqrt(u@u)*ρ0/mu # dissipation term chosen to only feel ρ0
 ω = -div(skew(u))
-N2 = (grad_φ*ez)@grad(s+s0)
+N2 = (grad_φ*ez)@grad(s)
+Ma_ad2 = Ma2*cP*u@u/(γ*h)
 
 # Checkpoint save - wall_dt is in seconds
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 39096, max_writes = 1)#, virtual_file=True, mode=mode)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 39096, max_writes = 1)
 checkpoint.add_tasks(solver.state)
 
 data_dt = args['--data_dt']
@@ -381,7 +385,7 @@ viscous_diffusion = u@e - 2/3*u@grad(u)
 
 slice_dt = data_dt*5
 slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=slice_dt, max_writes=10, mode=mode)
-slice_output.add_task(s-x_avg(s), name='srem')
+slice_output.add_task(s_fluc, name='s_fluc')
 slice_output.add_task(ω, name='omega_y')
 slice_output.add_task(ω**2, name='enstrophy')
 slice_output.add_task(u@ex, name='ux')
@@ -390,30 +394,28 @@ slice_output.add_task(u@ez, name='uz')
 # Horizontal averages
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=slice_dt, max_writes=None, mode=mode)
 averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h-h0)@ez), name='F_κ_1(z)')
-#averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h0)@ez), name='F_κ_0(z)')
 averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h)@ez), name='F_κ(z)')
-# averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*grad(h)@ez), name='F_κ(z)') # Without pert eqns, it is h-h0
-# averages.add_task(x_avg(-(R_inv/(Ma2*Pr))*grad(h+h0)@ez), name='F_κtot(z)') # Without pert eqns, it is h-h0
 averages.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
 averages.add_task(x_avg(-R_inv*(viscous_diffusion@ez)),name='F_viscous(z)')
 averages.add_task(x_avg(u@ez*ρ*h/Ma2), name='F_h(z)')
-averages.add_task(x_avg(-u@ez*ρ*h*(s+s0)/Ma2), name='F_PE(z)')
-#
+averages.add_task(x_avg(-u@ez*ρ*h*s/Ma2), name='F_PE(z)')
 averages.add_task(x_avg(u@ez*ρ*grad_φ/Ma2), name='F_g(z)')
-averages.add_task(x_avg(s), name='s(z)')
-averages.add_task(x_avg(s+s0), name='stot(z)')
-averages.add_task(x_avg(h_fluc), name='h(z)')
-averages.add_task(x_avg(h), name='htot(z)') # same as h0*exp(theta)
-averages.add_task(x_avg(θ), name='θ(z)')
-averages.add_task(x_avg(θ+θ0), name='θ_tot(z)')
-averages.add_task(x_avg(Υ), name='Υ(z)')
-averages.add_task(x_avg(Υ+Υ0), name='Υ_tot(z)')
 averages.add_task(x_avg(u@ez), name='uz(z)')
 averages.add_task(x_avg(N2), name='N2(z)')
+#
+averages.add_task(x_avg(s1), name='s1(z)')
+averages.add_task(x_avg(h1), name='h1(z)')
+averages.add_task(x_avg(θ1), name='θ1(z)')
+averages.add_task(x_avg(Υ1), name='Υ1(z)')
+averages.add_task(x_avg(s_fluc), name='s_fluc(z)')
+averages.add_task(x_avg(h_fluc), name='h_fluc(z)')
+averages.add_task(x_avg(ρ_fluc), name='ρ_fluc(z)')
+averages.add_task(x_avg(s), name='s(z)')
+averages.add_task(x_avg(h), name='h(z)')
+averages.add_task(x_avg(θ), name='θ(z)')
+averages.add_task(x_avg(Υ), name='Υ(z)')
 averages.add_task(np.sqrt(x_avg(τ_u@τ_u)), name='τ_u')
 averages.add_task(np.sqrt(x_avg(τ_s**2)), name='τ_s')
-
-Ma_ad2 = Ma2*cP*u@u/(γ*h)
 
 scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=data_dt, max_writes=None, mode=mode)
 scalars.add_task(avg(KE), name='KE')
