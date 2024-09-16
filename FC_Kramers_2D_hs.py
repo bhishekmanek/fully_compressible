@@ -249,7 +249,8 @@ if verbose and rank==0:
 
 # Putting a threshold (defined by ncc_cutoff) on all the NCC expansions.
 logger.info("NCC expansions:")
-for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0, ρ0*grad(θ0), h0*grad(Υ0),
+for ncc in [h0, ρ0, ρ0*grad(h0), ρ0*grad(s0), ρ0*h0,
+            ρ0*grad(θ0), h0*grad(Υ0), grad(Υ0),
             R_inv*Pr_inv*κ0, R_inv*Pr_inv*κ0*grad(lnκ0), R_inv*Pr_inv*κ0*grad(θ0)]:
     logger.info("{}: {}".format(ncc.evaluate(), np.where(np.abs(ncc.evaluate()['c']) >= ncc_cutoff)[0].shape))
     if verbose and rank==0:
@@ -284,7 +285,7 @@ problem.add_equation((ρ0*(dt(u)
                       - ρ0_g*u@grad(u)
                       + 1/Ma2*ρ0_g*h1*grad(s1)
                       ))
-problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0) + τ_c,
+problem.add_equation((h0*(dt(Υ) + div(u) + u@grad_Υ0 + τ_c),
                       -h0_g*u@grad(Υ) ))
 problem.add_equation((h0*((γ-1)*Υ + γ*s1)-h1, h0_g*np.log(h1*h0_inv_g+1)-h1)) #EOS, s_c/cP = scrS
 problem.add_equation((h0*ρ0*(dt(s1)
@@ -293,8 +294,8 @@ problem.add_equation((h0*ρ0*(dt(s1)
                       - R_inv*Pr_inv*κ0*lap(h1)
                       - R_inv*Pr_inv*κ0*grad(lnκ0)@grad(h1)
                       + τ_s,
-                      - ρ0_h0_g*u@grad(s1)
-                      + R_inv*Ma2*Phi ))
+                      - ρ0_h0_g*u@grad(s1) ))
+#                      + R_inv*Ma2*Phi ))
 
 if no_slip:
     problem.add_equation((u(z=0), 0))
@@ -304,9 +305,9 @@ else:
     problem.add_equation((ez@(ex@e(z=0)), 0))
     problem.add_equation((ez@u(z=Lz), 0))
     problem.add_equation((ez@(ex@e(z=Lz)), 0))
-    problem.add_equation((integ_x(ez@τ_u2), 0))
-problem.add_equation((s1(z=Lz), 0))
+problem.add_equation((integ_x(ez@τ_u2), 0))
 problem.add_equation((ez@grad(h1)(z=0), 0))
+problem.add_equation((s1(z=Lz), 0))
 
 logger.info("Problem built")
 
@@ -351,18 +352,18 @@ cfl = flow_tools.CFL(solver, Δt, safety=cfl_safety_factor, cadence=1, threshold
                      max_change=1.5, min_change=0.5, max_dt=max_Δt)
 cfl.add_velocity(u)
 
-ρ = ρ0*np.exp(Υ).evaluate()
-h = (h0+h1).evaluate()
-s = (s1+s0).evaluate()
-ρ_fluc = ρ0*(np.exp(Υ)-1).evaluate()
-h_fluc = h1.evaluate()
+ρ = ρ0*np.exp(Υ)
+h = h0+h1
+s = s1+s0
+ρ_fluc = ρ0*(np.exp(Υ)-1)
+h_fluc = h1
 KE = 0.5*ρ*u@u
 IE = 1/Ma2*ρ*h
-PE = -1/Ma2*ρ*h*(s1+s0)
+PE = -1/Ma2*ρ*h*s
 Re = np.sqrt(u@u)*ρ0/mu # dissipation term chosen to only feel ρ0
 ω = -div(skew(u))
 N2 = (grad_φ*ez)@grad(s1+s0)
-θ = (np.log(h1/h0+1)).evaluate()
+θ = np.log(h1/h0+1)
 # Checkpoint save - wall_dt is in seconds
 checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 39096, max_writes = 1)#, virtual_file=True, mode=mode)
 checkpoint.add_tasks(solver.state)
