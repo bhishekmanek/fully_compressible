@@ -284,14 +284,16 @@ problem.add_equation((ρ0*(dt(u)
                       - ρ0_g*u@grad(u)
                       + 1/Ma2*ρ0_g*h1*grad(s1)
                       ))
-problem.add_equation((dt(Υ1) + div(u) + u@grad_Υ0 + τ_c,
-                      -u@grad(Υ1) ))
+problem.add_equation((h0*(dt(Υ1) + div(u) + u@grad_Υ0) + Re*τ_c,
+                      -h0_g*u@grad(Υ1) ))
 problem.add_equation((h0*((γ-1)*Υ1 + γ*s1)-h1, h0_g*np.log(h1*h0_inv_g+1)-h1)) #EOS, s_c/cP = scrS
 problem.add_equation((h0*ρ0*(dt(s1)
                       + u@grad(s0))
                       # small cheat, h0 + h1 -> h0, ρ0 + ρ1 -> ρ0 in denominator
+#                      - R_inv*Pr_inv*κ0*lap(h1)
+#                      - R_inv*Pr_inv*κ0*grad(lnκ0)@grad(h1)
                       - R_inv*Pr_inv*κ0*lap(h1)
-                      - R_inv*Pr_inv*κ0*grad(lnκ0)@grad(h1)
+                      - R_inv*Pr_inv*grad(κ0)@grad(h1)
                       + τ_s,
                       - ρ0_h0_g*u@grad(s1)
                       + R_inv*Ma2*Phi ))
@@ -369,7 +371,7 @@ N2 = (grad_φ*ez)@grad(s)
 Ma_ad2 = Ma2*cP*u@u/(γ*h)
 
 # Checkpoint save - wall_dt is in seconds
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 39096, max_writes = 1)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 28200, max_writes = 1)
 checkpoint.add_tasks(solver.state)
 
 data_dt = args['--data_dt']
@@ -391,7 +393,7 @@ slice_output.add_task(u@ex, name='ux')
 slice_output.add_task(u@ez, name='uz')
 
 # Horizontal averages
-averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=slice_dt, max_writes=None, mode=mode)
+averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=slice_dt, max_writes=10, mode=mode)
 averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h-h0)@ez), name='F_κ_1(z)')
 averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h)@ez), name='F_κ(z)')
 averages.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
