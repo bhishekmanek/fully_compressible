@@ -151,8 +151,6 @@ zb1 = zb.clone_with(a=zb.a+1, b=zb.b+1)
 zb2 = zb.clone_with(a=zb.a+2, b=zb.b+2)
 lift1 = lambda A, n: de.Lift(A, zb1, n)
 lift = lambda A, n: de.Lift(A, zb2, n)
-τ_c0 = d.Field(name='τ_c0')
-τ_c1 = d.Field(name='τ_c1')
 τ_s1 = d.Field(name='τ_s1', bases=xb)
 τ_s2 = d.Field(name='τ_s2', bases=xb)
 τ_u1 = d.VectorField(c, name='τ_u1', bases=xb)
@@ -268,12 +266,11 @@ if verbose and rank==0:
     ax[1].legend(loc='center right')
     fig.savefig('ncc_structure.pdf')
 
-τ_c = lift1(τ_c1,-1) #+ τ_c0
 τ_u = lift(τ_u1,-1) + lift(τ_u2,-2)
 τ_s = lift(τ_s1,-1) + lift(τ_s2,-2)
 # Υ = ln(ρ), θ = ln(h)
 vars = [u, Υ1, h1, s1]
-taus = [τ_u1, τ_u2, τ_c1, τ_s1, τ_s2]
+taus = [τ_u1, τ_u2, τ_s1, τ_s2]
 problem = de.IVP(vars+taus)
 problem.add_equation((ρ0*(dt(u)
                       + 1/Ma2*grad(h1)
@@ -284,14 +281,12 @@ problem.add_equation((ρ0*(dt(u)
                       - ρ0_g*u@grad(u)
                       + 1/Ma2*ρ0_g*h1*grad(s1)
                       ))
-problem.add_equation((h0*(dt(Υ1) + div(u) + u@grad_Υ0) + Re*τ_c,
+problem.add_equation((h0*(dt(Υ1) + div(u) + u@grad_Υ0) + Re*lift(τ_u2,-1)@ez,
                       -h0_g*u@grad(Υ1) ))
 problem.add_equation((h0*((γ-1)*Υ1 + γ*s1)-h1, h0_g*np.log(h1*h0_inv_g+1)-h1)) #EOS, s_c/cP = scrS
 problem.add_equation((h0*ρ0*(dt(s1)
                       + u@grad(s0))
                       # small cheat, h0 + h1 -> h0, ρ0 + ρ1 -> ρ0 in denominator
-#                      - R_inv*Pr_inv*κ0*lap(h1)
-#                      - R_inv*Pr_inv*κ0*grad(lnκ0)@grad(h1)
                       - R_inv*Pr_inv*κ0*lap(h1)
                       - R_inv*Pr_inv*grad(κ0)@grad(h1)
                       + τ_s,
@@ -306,7 +301,7 @@ else:
     problem.add_equation((ez@(ex@e(z=0)), 0))
     problem.add_equation((ez@u(z=Lz), 0))
     problem.add_equation((ez@(ex@e(z=Lz)), 0))
-problem.add_equation((integ_x(ez@τ_u2), 0))
+#problem.add_equation((integ_x(ez@τ_u2), 0))
 problem.add_equation((ez@grad(h1)(z=0), 0))
 problem.add_equation((s1(z=Lz), 0))
 
@@ -426,7 +421,6 @@ scalars.add_task(avg(Re), name='Re')
 scalars.add_task(avg(N2), name='BV_freq')
 scalars.add_task(avg(ω**2), name='enstrophy')
 scalars.add_task(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-scalars.add_task(np.sqrt(z_avg(τ_c*τ_c)), name='τ_c')
 scalars.add_task(np.sqrt(avg(τ_u@τ_u)), name='τ_u')
 scalars.add_task(np.sqrt(avg(τ_s*τ_s)), name='τ_s')
 
@@ -437,7 +431,6 @@ flow.add_property(Re, name='Re')
 flow.add_property(KE, name='KE')
 flow.add_property(IE, name='IE')
 flow.add_property(np.sqrt(avg(Ma_ad2)), name='Ma_ad')
-flow.add_property(np.sqrt(τ_c**2), name='|τ_c|')
 flow.add_property(np.sqrt(τ_s**2), name='|τ_s|')
 flow.add_property(np.sqrt(τ_u@τ_u), name='|τ_u|')
 
@@ -453,7 +446,7 @@ while solver.proceed and good_solution:
         Ma_ad_avg = flow.grid_average('Ma_ad')
         Re_avg = flow.grid_average('Re')
         Re_max = flow.max('Re')
-        τ_max = np.max([flow.max('|τ_c|'), flow.max('|τ_s|'), flow.max('|τ_u|')])
+        τ_max = np.max([flow.max('|τ_s|'), flow.max('|τ_u|')])
         log_string = 'Iteration: {:5d}, Time: {:8.3e}, dt: {:5.1e}'.format(solver.iteration, solver.sim_time, Δt)
         log_string += ', KE: {:.2g}, Ma: {:.2g}, IE: {:.2g}, Re: {:.2g} ({:.2g})'.format(KE_avg, Ma_ad_avg, IE_avg, Re_avg, Re_max)
         log_string += ', τ: {:.2g}'.format(τ_max)
