@@ -389,8 +389,8 @@ slice_output.add_task(u@ez, name='uz')
 
 # Horizontal averages
 averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=slice_dt, max_writes=10, mode=mode)
-averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h-h0)@ez), name='F_κ_1(z)')
-averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h)@ez), name='F_κ(z)')
+averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*κ0*grad(h-h0)@ez), name='F_κ_1(z)')
+averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*κ0*grad(h)@ez), name='F_κ(z)')
 averages.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
 averages.add_task(x_avg(-R_inv*(viscous_diffusion@ez)),name='F_viscous(z)')
 averages.add_task(x_avg(u@ez*ρ*h/Ma2), name='F_h(z)')
