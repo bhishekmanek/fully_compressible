@@ -28,7 +28,7 @@ Options:
     --run_time_buoy=<run_time_buoy>      Run time, in buoyancy times
     --run_time_iter=<run_time_iter>      Run time, number of iterations; if not set, n_iter=np.inf
 
-    --data_dt=<data_dt>                  Time interval between two data dumps [default: 10]
+    --data_dt=<data_dt>                  Time interval between two data dumps [default: 2000]
 
     --restart=<restart>                  Merged chechpoint file to restart from.
 
@@ -365,8 +365,12 @@ Re = np.sqrt(u@u)*ρ0/mu # dissipation term chosen to only feel ρ0
 N2 = (grad_φ*ez)@grad(s)
 Ma_ad2 = Ma2*cP*u@u/(γ*h)
 
+# Full (state-dependent) kappa from the Kramers-like law
+lnk_full = (3 - bb)*θ - (1 + aa)*Υ
+k_full  = np.exp(lnk_full)
+
 # Checkpoint save - wall_dt is in seconds
-checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 28200, max_writes = 1)
+checkpoint = solver.evaluator.add_file_handler(data_dir+'/checkpoints', wall_dt = 21400, max_writes = 1)
 checkpoint.add_tasks(solver.state)
 
 data_dt = args['--data_dt']
@@ -379,8 +383,8 @@ if data_dt != None:
 
 viscous_diffusion = u@e - 2/3*u@grad(u)
 
-slice_dt = data_dt*5
-slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=slice_dt, max_writes=10, mode=mode)
+slice_dt = data_dt
+slice_output = solver.evaluator.add_file_handler(data_dir+'/slices', sim_dt=1000, max_writes=10, mode=mode)
 slice_output.add_task(s_fluc, name='s_fluc')
 slice_output.add_task(ω, name='omega_y')
 slice_output.add_task(ω**2, name='enstrophy')
@@ -388,17 +392,47 @@ slice_output.add_task(u@ex, name='ux')
 slice_output.add_task(u@ez, name='uz')
 
 # Horizontal averages
-averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=slice_dt, max_writes=10, mode=mode)
+averages = solver.evaluator.add_file_handler(data_dir+'/averages', sim_dt=data_dt, max_writes=None, mode=mode)
 averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*κ0*grad(h-h0)@ez), name='F_κ_1(z)')
 averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*κ0*grad(h)@ez), name='F_κ(z)')
+#averages.add_task(x_avg(-R_inv*Pr_inv/Ma2/cP*κ0*grad(h0)@ez), name='F_κ0(z)')
+# Full-kappa conductive fluxes (vertical component)
+averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*k_full*(grad(h)@ez)),  name='F_κ_full(z)')
+averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*k_full*(grad(h-h0)@ez)),  name='F_κ1_full(z)')
 averages.add_task(x_avg(0.5*ρ*u@ez*u@u), name='F_KE(z)')
 averages.add_task(x_avg(-R_inv*(viscous_diffusion@ez)),name='F_viscous(z)')
 averages.add_task(x_avg(u@ez*ρ*h/Ma2), name='F_h(z)')
+averages.add_task(x_avg(ρ*u@ez*(h - x_avg(h))/Ma2), name='F_h_fluc(z)')
+averages.add_task(x_avg((ρ*u@ez - x_avg(ρ*u@ez))*(h - x_avg(h))/Ma2), name='F_h_fluc2(z)')
+averages.add_task(x_avg(ρ*u@ez*(s - x_avg(s))), name='F_s_fluc(z)')
+averages.add_task(x_avg(-R_inv*Pr_inv/Ma2*κ0*grad(h-h0)@ez) + x_avg(ρ*u@ez*(h - x_avg(h))/Ma2) + x_avg(0.5*ρ*u@ez*u@u) + x_avg(-R_inv*(viscous_diffusion@ez)), name='F_tot_trans(z)')
 averages.add_task(x_avg(-u@ez*ρ*h*s/Ma2), name='F_PE(z)')
 averages.add_task(x_avg(u@ez*ρ*grad_φ/Ma2), name='F_g(z)')
 averages.add_task(x_avg(u@ez), name='uz(z)')
 averages.add_task(x_avg(N2), name='N2(z)')
+averages.add_task(x_avg(ω**2), name='Enstrophy(z)')
 #
+uz = u@ez
+u2 = u@u
+uz2 = (u@ez)**2
+ux2 = (u@ex)**2
+uz_pos = 0.5*(uz + np.abs(uz))
+uz_neg = 0.5*(uz - np.abs(uz))
+#
+averages.add_task(x_avg(ρ*uz_pos*(h - x_avg(h))/Ma2), name='F_h_fluc_up(z)')
+averages.add_task(x_avg(ρ*uz_neg*(h - x_avg(h))/Ma2), name='F_h_fluc_down(z)')
+averages.add_task(x_avg(uz_pos*ρ*h/Ma2), name='F_h_up(z)')
+averages.add_task(x_avg(uz_neg*ρ*h/Ma2), name='F_h_down(z)')
+averages.add_task(x_avg(ρ*uz_pos*(s - x_avg(s))/Ma2), name='F_s_fluc_up(z)')
+averages.add_task(x_avg(ρ*uz_neg*(s - x_avg(s))/Ma2), name='F_s_fluc_down(z)')
+averages.add_task(np.sqrt(x_avg(u2)),  name='u_rms(z)')
+averages.add_task(np.sqrt(x_avg(uz2)), name='uz_rms(z)')
+averages.add_task(np.sqrt(x_avg(ux2)), name='ux_rms(z)')
+averages.add_task(x_avg(u2), name='u2(z)')
+averages.add_task(x_avg((u@ez)**2), name='uz2(z)')
+averages.add_task(x_avg(ρ), name='rho(z)')
+averages.add_task(x_avg(ρ*u@ez), name='rho_uz(z)')   # mass flux through planes
+averages.add_task(np.sqrt(x_avg(ρ*u2) / x_avg(ρ)), name='u_rms_rho(z)')
 averages.add_task(x_avg(s1), name='s1(z)')
 averages.add_task(x_avg(h1), name='h1(z)')
 averages.add_task(x_avg(θ1), name='θ1(z)')
@@ -412,8 +446,10 @@ averages.add_task(x_avg(θ), name='θ(z)')
 averages.add_task(x_avg(Υ), name='Υ(z)')
 averages.add_task(np.sqrt(x_avg(τ_u@τ_u)), name='τ_u')
 averages.add_task(np.sqrt(x_avg(τ_s**2)), name='τ_s')
-
+#
 scalars = solver.evaluator.add_file_handler(data_dir+'/scalars', sim_dt=data_dt, max_writes=None, mode=mode)
+scalars.add_task(avg(ρ), name='rho_mean')
+scalars.add_task(np.sqrt(2*avg(KE)/avg(ρ)), name='u_rms_global')
 scalars.add_task(avg(KE), name='KE')
 scalars.add_task(avg(PE), name='PE')
 scalars.add_task(avg(IE), name='IE')
